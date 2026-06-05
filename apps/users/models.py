@@ -8,6 +8,7 @@ class CustomUser(AbstractUser):
         ('ADMIN', 'admin'),
         ('EMPLOYER', 'employer'),
         ('CANDIDATE', 'candidate'),
+        ('DEFAULT', 'default'),
     )
 
     # 2. Add the Custom Fields
