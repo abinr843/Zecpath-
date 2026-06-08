@@ -30,7 +30,7 @@ class CustomUser(AbstractUser):
 
 
 class Employer(models.Model):
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='employer')
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='EMPLOYER')
     company_name = models.CharField(max_length=100)
     company_website= models.URLField(max_length=500,null=True,blank=True)
     created_date = models.DateTimeField(auto_now_add=True)
@@ -39,7 +39,7 @@ class Employer(models.Model):
         return self.company_name
 
 class Candidate(models.Model):
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='candidate')
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='CANDIDATE')
     phone_no = models.CharField(max_length=100, blank=True, null=True)
     resume_url = models.URLField(max_length=500, null=True,blank=True)
     created_date = models.DateTimeField(auto_now_add=True)
