@@ -1,13 +1,10 @@
-from django.db.migrations import serializer
-from django.shortcuts import render
-from django.http import JsonResponse
-from rest_framework.permissions import IsAuthenticated
+
+from rest_framework import generics,status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status, response
 from .serializers import *
-from django.db import IntegrityError
 from .services import *
+from .permissions import *
 
 
 
@@ -41,21 +38,31 @@ class RegisterUser(APIView):
 
 
             
-class EmployerList(APIView):
-    def get(self, request):
-        employee = Employer.objects.all()
-        serializer = CandidateSerializer(employee, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+class EmployerProfile(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = EmployerSerializer
+    permission_classes = [IsProfileOwnerOrAdmin]
+    def get_object(self):
+        return self.request.user.candidate
+
+    def perform_destroy(self,instance):
+        instance.is_active = False #soft delete logic
+        instance.save()
+
+class CandidateProfile(generics.RetrieveUpdateDestroyAPIView):
+   serializer_class = CandidateSerializer
+   permission_classes = [IsProfileOwnerOrAdmin]
 
 
-class SecureDashboard(APIView):
-    permission_classes = [IsAuthenticated]
-    def get (self, request):
-        
-        return Response({
-            "message": f"Welcome to the secure zone, {request.user.email}!",
-            "role": request.user.role
-        })
+   def get_object(self):
+    return self.request.user.candidate
+
+
+   def perform_destroy(self, instance):
+    instance.is_active = False  # soft delete logic
+    instance.save()
+
+
+
 
 
 

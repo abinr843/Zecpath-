@@ -33,11 +33,18 @@ class CandidateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Candidate
         fields = '__all__'
-        read_only_fields = ('id',)
+        read_only_fields = ['id','user','is_active']
 
-class EmployeeSerializer(serializers.ModelSerializer):
+    def validate_experience_years(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Experience years cannot be negative.")
+        if value > 50:
+            raise serializers.ValidationError("Please enter a valid number of years.")
+        return value
+
+class EmployerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employer
         fields = '__all__'
-        read_only_fields = ('id',)
+        read_only_fields = ('id','user','is_active','is_verified')
 
