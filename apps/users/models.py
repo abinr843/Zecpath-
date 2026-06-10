@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from .validators import *
 
 
 class CustomUser(AbstractUser):
@@ -95,8 +96,13 @@ class Candidate(models.Model):
     willing_to_relocate = models.BooleanField(default=False)
 
     # Digital Portfolio
-    master_resume = models.FileField(upload_to='master_resumes/', blank=True, null=True,
-                                     help_text="Default resume for quick applies")
+    master_resume = models.FileField(
+        upload_to='master_resumes/',
+        blank=True,
+        null=True,
+        validators=[validate_resume_ext, validate_resume_size],
+        help_text="Upload PDF or DOCX (Max 5MB)"
+    )
     portfolio_url = models.URLField(blank=True, null=True, help_text="Link to personal site or projects like TourEase")
     github_url = models.URLField(blank=True, null=True)
     linkedin_url = models.URLField(blank=True, null=True)

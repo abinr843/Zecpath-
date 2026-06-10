@@ -35,6 +35,14 @@ DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = []
 
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Security: Set a maximum upload size for the entire server (e.g., 5MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880
+
+
 AUTH_USER_MODEL = 'users.CustomUser'
 
 # Application definition

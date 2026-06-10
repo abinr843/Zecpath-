@@ -40,7 +40,7 @@ class RegisterUser(APIView):
             
 class EmployerProfile(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = EmployerSerializer
-    permission_classes = [IsProfileOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated,IsProfileOwnerOrAdmin]
     def get_object(self):
         return self.request.user.candidate
 
@@ -50,7 +50,7 @@ class EmployerProfile(generics.RetrieveUpdateDestroyAPIView):
 
 class CandidateProfile(generics.RetrieveUpdateDestroyAPIView):
    serializer_class = CandidateSerializer
-   permission_classes = [IsProfileOwnerOrAdmin]
+   permission_classes = [permissions.IsAuthenticated,IsProfileOwnerOrAdmin]
 
 
    def get_object(self):
