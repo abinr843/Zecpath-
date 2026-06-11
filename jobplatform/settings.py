@@ -94,8 +94,9 @@ WSGI_APPLICATION = 'jobplatform.wsgi.application'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-
-    )
+    ),
+    #we use this to intercepts every error before it reaches the user
+    'EXCEPTION_HANDLER': 'jobplatform.custom_exceptions.custom_exception_handler',
 }
 
 SIMPLE_JWT = {
