@@ -1,13 +1,18 @@
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions,generics,filters
 from apps.users.models import *
 from apps.jobs.permissions import IsEmployer, IsCandidate
 from .models import *
 from .serializers import *
+from django_filters.rest_framework import DjangoFilterBackend
+
 
 class JobViewSet(viewsets.ModelViewSet):
     # Only show active jobs, newest first
-    queryset = Job.objects.filter(is_active=True).order_by('-created_at')
+    queryset = Job.objects.select_related('employer').filter(is_active=True)
     serializer_class = JobSerializer
+    filter_backends = (DjangoFilterBackend,filters.SearchFilter,)
+    filterset_fields = ('employment_type','location','employer','location_type')
+    search_fields = ('title','description','skills_required')
 
     def get_permissions(self):
         # If the user is just viewing jobs (GET request), they only need to be logged in

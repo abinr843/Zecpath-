@@ -97,6 +97,8 @@ REST_FRAMEWORK = {
     ),
     #we use this to intercepts every error before it reaches the user
     'EXCEPTION_HANDLER': 'jobplatform.custom_exceptions.custom_exception_handler',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
 }
 
 SIMPLE_JWT = {
