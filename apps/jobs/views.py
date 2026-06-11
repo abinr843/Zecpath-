@@ -1,47 +1,56 @@
-from django.shortcuts import render
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import viewsets, permissions,generics,filters
+from apps.users.models import *
+from apps.jobs.permissions import IsEmployer, IsCandidate
 from .models import *
 from .serializers import *
-from .services import *
+from django_filters.rest_framework import DjangoFilterBackend
 
-class JobList(APIView):
-    def get(self, request):
-        jobs = Job.objects.all()
-        serializer = JobSerializer(jobs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def post(self, request):
-        serializer = JobSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class JobViewSet(viewsets.ModelViewSet):
+    # Only show active jobs, newest first
+    queryset = Job.objects.select_related('employer').filter(is_active=True)
+    serializer_class = JobSerializer
+    filter_backends = (DjangoFilterBackend,filters.SearchFilter,)
+    filterset_fields = ('employment_type','location','employer','location_type')
+    search_fields = ('title','description','skills_required')
 
-class ApplicationList(APIView):
-        def get(self, request):
-            applications = Application.objects.all()
-            serializer = ApplicationSerializer(applications, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+    def get_permissions(self):
+        # If the user is just viewing jobs (GET request), they only need to be logged in
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        # If they are trying to Create, Update, or Delete a job, enforce the Employer bouncer
+        return [IsEmployer()]
 
-        def post(self, request, job_id):
-            try:
-                # 1. Grab the data
-                job = Job.objects.get(id=job_id)
-                # Hardcoding candidate for now until auth is fully hooked up
-                candidate = Candidate.objects.first()
+    def perform_create(self, serializer):
+        # Securely fetch the employer profile linked to the JWT token and attach it
+        employer_profile = Employer.objects.get(user=self.request.user)
+        serializer.save(employer=employer_profile)
 
-                # 2. Call the Service Layer (The Clean Architecture part!)
-                application = process_new_application(candidate, job)
 
-                # 3. Return the response
-                return Response(
-                    {"message": "Application submitted successfully!", "id": application.id},
-                    status=status.HTTP_201_CREATED
-                )
+class ApplicationViewSet(viewsets.ModelViewSet):
+    serializer_class = ApplicationSerializer
 
-            except Job.DoesNotExist:
-                return Response({"error": "Job not found"}, status=status.HTTP_404_NOT_FOUND)
-            except ValidationError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    def get_permissions(self):
+        # Only Candidates can submit new applications
+        if self.request.method == 'POST':
+            return [IsCandidate()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        # Massive SaaS Feature: Data Isolation
+        # Candidates should only see their own applications.
+        # Employers should only see applications for the jobs they posted.
+        user = self.request.user
+
+        if user.role =='CANDIDATE':
+            return Application.objects.filter(candidate__user=user)
+        elif user.role == 'EMPLOYER':
+            return Application.objects.filter(job__employer__user=user)
+
+        # Admin or unknown fallback gets nothing
+        return Application.objects.none()
+
+    def perform_create(self, serializer):
+        # Securely fetch the candidate profile linked to the JWT token and attach it
+        candidate_profile = Candidate.objects.get(user=self.request.user)
+        serializer.save(candidate=candidate_profile)

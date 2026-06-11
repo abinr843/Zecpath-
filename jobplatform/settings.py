@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import environ
+from datetime import timedelta
 import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,6 +35,14 @@ DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = []
 
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Security: Set a maximum upload size for the entire server (e.g., 5MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880
+
+
 AUTH_USER_MODEL = 'users.CustomUser'
 
 # Application definition
@@ -47,7 +56,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'apps.users',
     'rest_framework',
-    'apps.jobs'
+    'apps.jobs',
+    'rest_framework_simplejwt.token_blacklist',
 ]
 
 MIDDLEWARE = [
@@ -78,6 +88,27 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'jobplatform.wsgi.application'
+
+#jwt configuration
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    #we use this to intercepts every error before it reaches the user
+    'EXCEPTION_HANDLER': 'jobplatform.custom_exceptions.custom_exception_handler',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+
+}
 
 
 # Database
