@@ -3,6 +3,7 @@ from apps.users.models import *
 from apps.jobs.permissions import IsEmployer, IsCandidate
 from .models import *
 from .serializers import *
+from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 
 
@@ -10,9 +11,11 @@ class JobViewSet(viewsets.ModelViewSet):
     # Only show active jobs, newest first
     queryset = Job.objects.select_related('employer').filter(is_active=True)
     serializer_class = JobSerializer
-    filter_backends = (DjangoFilterBackend,filters.SearchFilter,)
+    filter_backends = (DjangoFilterBackend,SearchFilter,OrderingFilter)
     filterset_fields = ('employment_type','location','employer','location_type')
     search_fields = ('title','description','skills_required')
+    ordering_fields = ('created_at','salary_min')
+    ordering = ('-created_at',)
 
     def get_permissions(self):
         # If the user is just viewing jobs (GET request), they only need to be logged in
