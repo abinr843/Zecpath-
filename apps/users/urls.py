@@ -14,7 +14,7 @@ urlpatterns = [
     path('profile/employer/', EmployerProfile.as_view(), name='employer_profile'),
     path('candidate/', CandidateList.as_view(), name='Candidate-list'),
     path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('login/', TokenObtainPairView.as_view(), name='login'),
+    path('login/', CustomTokenObtainPairView.as_view(), name='login'),
 
 
 

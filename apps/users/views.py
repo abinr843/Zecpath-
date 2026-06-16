@@ -4,13 +4,17 @@ from rest_framework import generics, status, permissions
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import CustomUser, Candidate
-from .serializers import UserSerializer, CandidateSerializer, EmployerSerializer
+from .serializers import UserSerializer, CandidateSerializer, EmployerSerializer, CustomTokenObtainPairSerializer
 from .services import create_candidate_account, create_employer_account
 from .permissions import IsProfileOwnerOrAdmin
 
 logger = logging.getLogger(__name__)
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
 
 
 # ---------------------------------------------------------------------------

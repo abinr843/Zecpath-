@@ -1,8 +1,21 @@
 from rest_framework import serializers, permissions
 from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import *
 
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+
+        # Add custom claims
+        token['email'] = user.email
+        token['username'] = user.username
+        token['role'] = user.role
+
+        return token
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)

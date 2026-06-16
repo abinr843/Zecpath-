@@ -63,6 +63,7 @@ class Application(models.Model):
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='applications')
 
     # Professional Application Attachments
+    resume_snapshot = models.URLField(max_length=500, blank=True, null=True, help_text="Snapshot of the candidate's master resume URL at the time of application")
     resume = models.FileField(upload_to='resumes/', blank=True, null=True)
     cover_letter = models.TextField(blank=True, null=True)
     employer_notes = models.TextField(blank=True, null=True,

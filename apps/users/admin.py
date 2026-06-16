@@ -6,7 +6,7 @@ from .models import CustomUser, Employer, Candidate
 
 class CustomUserAdmin(UserAdmin):
     # The fields to display in the user list view
-    list_display = ('email', 'username', 'role', 'is_active', 'is_verified','date_joined','updated_at')
+    list_display = ('id', 'email', 'username', 'role', 'is_active', 'is_verified', 'date_joined', 'updated_at')
 
     # Add filters on the right sidebar
     list_filter = ('role', 'is_active', 'is_verified')
@@ -21,9 +21,14 @@ class CustomUserAdmin(UserAdmin):
         ('Zecpath Custom Fields', {'fields': ('email', 'role', 'phone')}),
     )
 
+class CandidateAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'headline', 'is_active')
+
+class EmployerAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'company_name', 'is_active')
 
 # Register the models
 admin.site.register(CustomUser, CustomUserAdmin)
-admin.site.register(Candidate)
-admin.site.register(Employer)
+admin.site.register(Candidate, CandidateAdmin)
+admin.site.register(Employer, EmployerAdmin)
 
