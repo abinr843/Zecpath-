@@ -62,3 +62,72 @@ def process_new_application(candidate, job, cover_letter=None):
     # 7. (Placeholder) Trigger ATS scoring engine here later
 
     return application
+
+
+VALID_TRANSITIONS = {
+    'applied': ['under_review', 'rejected'],
+    'under_review': ['shortlisted', 'rejected'],
+    'shortlisted': ['interviewing', 'rejected'],
+    'interviewing': ['hired', 'rejected'],
+    'hired': [], # Terminal state
+    'rejected': [], # Terminal state
+}
+
+def update_application_status(application, new_status, user, notes=''):
+    """
+    Enforce ATS State Machine rules and log the activity.
+    """
+    old_status = application.status
+
+    # Check if this is just a notes update without a status change
+    if old_status == new_status:
+        if notes and notes != application.employer_notes:
+            with transaction.atomic():
+                application.employer_notes = notes
+                application.save(update_fields=['employer_notes'])
+                from .models import ApplicationLog
+                ApplicationLog.objects.create(
+                    application=application,
+                    user=user,
+                    old_status=old_status,
+                    new_status=new_status,
+                    notes=notes
+                )
+        return application
+
+    # Enforce Locked Stages
+    if old_status in ['hired', 'rejected']:
+        raise ValidationError(
+            {"status": ["This application is locked. Status cannot be changed."]}
+        )
+
+    # Enforce Linear Progression
+    allowed_next_states = VALID_TRANSITIONS.get(old_status, [])
+    if new_status not in allowed_next_states:
+        raise ValidationError(
+            {"status": [f"Invalid transition from '{old_status}' to '{new_status}'. Allowed states: {allowed_next_states}"]}
+        )
+
+    # Apply changes atomically
+    with transaction.atomic():
+        application.status = new_status
+        if notes is not None:
+            application.employer_notes = notes
+        
+        application.save(update_fields=['status', 'employer_notes'])
+
+        from .models import ApplicationLog
+        ApplicationLog.objects.create(
+            application=application,
+            user=user,
+            old_status=old_status,
+            new_status=new_status,
+            notes=notes
+        )
+
+    logger.info(
+        "Application %d status updated: %s -> %s by user %s",
+        application.id, old_status, new_status, user.email,
+    )
+
+    return application

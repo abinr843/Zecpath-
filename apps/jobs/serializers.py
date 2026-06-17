@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.jobs.models import Job, Application
+from apps.jobs.models import Job, Application, ApplicationLog
 from apps.users.models import Candidate, CustomUser
 
 
@@ -62,6 +62,19 @@ class ApplicationSerializer(serializers.ModelSerializer):
             validate_no_duplicate_application(candidate, job)
 
         return attrs
+
+
+class ApplicationLogSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ApplicationLog
+        fields = ('id', 'old_status', 'new_status', 'notes', 'created_at', 'user_name')
+
+    def get_user_name(self, obj):
+        if obj.user:
+            return obj.user.get_full_name() or obj.user.username
+        return "System"
 
 
 class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):

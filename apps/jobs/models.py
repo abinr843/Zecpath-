@@ -77,3 +77,22 @@ class Application(models.Model):
 
     def __str__(self):
         return f"{self.candidate.user.username} -> {self.job.title}"
+
+
+class ApplicationLog(models.Model):
+    """
+    Audit Tracking Log for Application status changes and notes.
+    Provides a permanent history of ATS actions.
+    """
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='logs')
+    user = models.ForeignKey('users.CustomUser', on_delete=models.SET_NULL, null=True, help_text="The user who made the change")
+    old_status = models.CharField(max_length=100)
+    new_status = models.CharField(max_length=100)
+    notes = models.TextField(blank=True, null=True, help_text="Optional context or notes added during the transition")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"App {self.application_id}: {self.old_status} -> {self.new_status} by {self.user}"

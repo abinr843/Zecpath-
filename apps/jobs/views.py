@@ -8,9 +8,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.users.models import Employer, Candidate
 from apps.jobs.permissions import IsEmployer, IsCandidate, IsApplicationOwnerOrEmployer, IsJobOwner
-from .models import Job, Application
-from .serializers import JobSerializer, ApplicationSerializer, ApplicationStatusUpdateSerializer, ApplicationReadSerializer
-from .services import process_new_application
+from .models import Job, Application, ApplicationLog
+from .serializers import JobSerializer, ApplicationSerializer, ApplicationStatusUpdateSerializer, ApplicationReadSerializer, ApplicationLogSerializer
+from .services import process_new_application, update_application_status
 from .filters import ApplicationFilter
 
 logger = logging.getLogger(__name__)
@@ -131,13 +131,35 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             partial=True,
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
 
-        logger.info(
-            "Application %d status updated to '%s' by employer %s",
-            application.id,
-            serializer.validated_data.get('status', application.status),
-            request.user.email,
-        )
+        new_status = serializer.validated_data.get('status', application.status)
+        new_notes = serializer.validated_data.get('employer_notes', application.employer_notes)
 
+        try:
+            update_application_status(application, new_status, request.user, new_notes)
+        except Exception as e:
+            from rest_framework.exceptions import ValidationError
+            if isinstance(e, ValidationError):
+                return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(ApplicationSerializer(application).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='logs')
+    def logs(self, request, pk=None):
+        """
+        GET /api/jobs/applications/{id}/logs/
+        Returns the audit trail for this application.
+        """
+        application = self.get_object()
+        
+        # Security: verify this employer owns the job
+        if request.user.role != 'EMPLOYER' or application.job.employer.user != request.user:
+            return Response(
+                {'error': 'You do not have permission to view logs for this application.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        logs = application.logs.all()
+        serializer = ApplicationLogSerializer(logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
