@@ -7,7 +7,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.users.models import Employer, Candidate
-from apps.jobs.permissions import IsEmployer, IsCandidate, IsApplicationOwnerOrEmployer, IsJobOwner
+from apps.jobs.permissions import IsEmployer, IsCandidate, IsApplicationOwnerOrEmployer, IsJobOwner, IsJobAuthor
 from .models import Job, Application, ApplicationLog
 from .serializers import JobSerializer, ApplicationSerializer, ApplicationStatusUpdateSerializer, ApplicationReadSerializer, ApplicationLogSerializer
 from .services import process_new_application, update_application_status
@@ -36,18 +36,52 @@ class JobViewSet(viewsets.ModelViewSet):
         # If the user is just viewing jobs (GET request), they only need to be logged in
         if self.request.method in permissions.SAFE_METHODS:
             return [permissions.IsAuthenticated()]
-        # If they are trying to Create, Update, or Delete a job, enforce the Employer bouncer
-        return [IsEmployer()]
+        # If they are trying to Create, Update, or Delete a job, enforce the Employer bouncer and Job Authorship
+        return [IsEmployer(), IsJobAuthor()]
 
     def perform_create(self, serializer):
         # Securely fetch the employer profile linked to the JWT token and attach it
         employer_profile = Employer.objects.get(user=self.request.user)
         serializer.save(employer=employer_profile)
 
+    @action(detail=True, methods=['patch'], url_path='close')
+    def close_hiring(self, request, pk=None):
+        job = self.get_object()
+        job.is_active = False
+        job.save()
+        return Response({'status': 'Hiring closed'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='analytics')
+    def analytics(self, request):
+        if request.user.role != 'EMPLOYER':
+            return Response({'error': 'Only employers can access analytics.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        employer = request.user.employer
+        jobs = Job.objects.filter(employer=employer)
+        active_jobs_count = jobs.filter(is_active=True).count()
+        
+        applications = Application.objects.filter(job__employer=employer)
+        total_applicants = applications.count()
+        
+        shortlisted_and_beyond = applications.filter(status__in=['shortlisted', 'interviewing', 'hired']).count()
+        shortlist_ratio = (shortlisted_and_beyond / total_applicants * 100) if total_applicants > 0 else 0
+        
+        interviewing = applications.filter(status='interviewing').count()
+        hired = applications.filter(status='hired').count()
+        
+        return Response({
+            'activeJobs': active_jobs_count,
+            'totalApplicants': total_applicants,
+            'shortlistRatio': round(shortlist_ratio, 1),
+            'interviewing': interviewing,
+            'hired': hired,
+        })
+
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     filter_backends = (DjangoFilterBackend, SearchFilter, OrderingFilter)
     filterset_class = ApplicationFilter
+    search_fields = ['candidate__user__first_name', 'candidate__user__last_name', 'candidate__user__email', 'candidate__skills']
     ordering_fields = ('applied_on', 'status')
     ordering = ('-applied_on',)
 

@@ -47,3 +47,13 @@ class IsJobOwner(BasePermission):
 
     def has_object_permission(self, request, view, obj):
         return obj.job.employer.user == request.user
+
+
+class IsJobAuthor(BasePermission):
+    """
+    Object-level permission to only allow the employer who created a job to edit/delete it.
+    """
+    def has_object_permission(self, request, view, obj):
+        if request.user.role == 'EMPLOYER':
+            return obj.employer.user == request.user
+        return False
