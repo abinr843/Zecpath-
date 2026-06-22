@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.jobs.models import Job, Application, ApplicationLog
+from apps.jobs.models import Job, Application, ApplicationLog, SavedJob
 from apps.users.models import Candidate, CustomUser
 
 
@@ -94,3 +94,20 @@ class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):
                 f"Invalid status '{value}'. Must be one of: {', '.join(valid_statuses)}"
             )
         return value
+
+
+class SavedJobReadSerializer(serializers.ModelSerializer):
+    """Read serializer that nests full job details for the dashboard."""
+    job = NestedJobSerializer(read_only=True)
+
+    class Meta:
+        model = SavedJob
+        fields = ('id', 'job', 'saved_at')
+
+
+class SavedJobCreateSerializer(serializers.ModelSerializer):
+    """Write serializer that accepts a job ID to save."""
+    class Meta:
+        model = SavedJob
+        fields = ('id', 'job')
+        read_only_fields = ('id',)

@@ -1,5 +1,6 @@
 import logging
 
+from django.db.models import Q
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,8 +9,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.users.models import Employer, Candidate
 from apps.jobs.permissions import IsEmployer, IsCandidate, IsApplicationOwnerOrEmployer, IsJobOwner, IsJobAuthor
-from .models import Job, Application, ApplicationLog
-from .serializers import JobSerializer, ApplicationSerializer, ApplicationStatusUpdateSerializer, ApplicationReadSerializer, ApplicationLogSerializer
+from .models import Job, Application, ApplicationLog, SavedJob
+from .serializers import (
+    JobSerializer, ApplicationSerializer, ApplicationStatusUpdateSerializer,
+    ApplicationReadSerializer, ApplicationLogSerializer,
+    SavedJobReadSerializer, SavedJobCreateSerializer,
+)
 from .services import process_new_application, update_application_status
 from .filters import ApplicationFilter
 
@@ -77,6 +82,48 @@ class JobViewSet(viewsets.ModelViewSet):
             'hired': hired,
         })
 
+    @action(detail=False, methods=['get'], url_path='recommended', permission_classes=[IsCandidate])
+    def recommended(self, request):
+        """
+        GET /api/jobs/listings/recommended/
+        Returns jobs matching the candidate's profile skills.
+        Ranks by number of overlapping skills.
+        """
+        try:
+            candidate = request.user.candidate
+        except Candidate.DoesNotExist:
+            return Response({'error': 'Candidate profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        candidate_skills = [
+            s.strip().lower()
+            for s in (candidate.skills or '').split(',')
+            if s.strip()
+        ]
+
+        if not candidate_skills:
+            return Response([], status=status.HTTP_200_OK)
+
+        # Build Q filter: match any job that contains at least one candidate skill
+        skill_query = Q()
+        for skill in candidate_skills:
+            skill_query |= Q(skills_required__icontains=skill)
+
+        jobs = (
+            Job.objects
+            .filter(skill_query, is_active=True)
+            .select_related('employer')
+            .distinct()
+        )
+
+        # Rank by overlap count (Python-side for simplicity with SQLite)
+        def overlap_count(job):
+            job_skills = [s.strip().lower() for s in (job.skills_required or '').split(',')]
+            return sum(1 for cs in candidate_skills if cs in job_skills)
+
+        ranked = sorted(jobs, key=overlap_count, reverse=True)[:10]
+        serializer = JobSerializer(ranked, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     filter_backends = (DjangoFilterBackend, SearchFilter, OrderingFilter)
@@ -139,6 +186,28 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             cover_letter=cover_letter,
         )
 
+    @action(detail=False, methods=['get'], url_path='candidate-analytics', permission_classes=[IsCandidate])
+    def candidate_analytics(self, request):
+        """
+        GET /api/jobs/applications/candidate-analytics/
+        Returns dashboard counts for the candidate.
+        """
+        try:
+            candidate = request.user.candidate
+        except Candidate.DoesNotExist:
+            return Response({'error': 'Candidate profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        applications = Application.objects.filter(candidate=candidate)
+        saved_count = SavedJob.objects.filter(candidate=candidate).count()
+
+        return Response({
+            'applied': applications.count(),
+            'saved': saved_count,
+            'interviewing': applications.filter(status='interviewing').count(),
+            'shortlisted': applications.filter(status='shortlisted').count(),
+            'hired': applications.filter(status='hired').count(),
+        })
+
     @action(detail=True, methods=['patch'], url_path='status-update')
     def status_update(self, request, pk=None):
         """
@@ -184,11 +253,21 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         """
         GET /api/jobs/applications/{id}/logs/
         Returns the audit trail for this application.
+        Accessible by both the owning Employer and the Candidate.
         """
         application = self.get_object()
-        
-        # Security: verify this employer owns the job
-        if request.user.role != 'EMPLOYER' or application.job.employer.user != request.user:
+
+        # Security: allow employer who owns the job OR the candidate who applied
+        is_employer_owner = (
+            request.user.role == 'EMPLOYER'
+            and application.job.employer.user == request.user
+        )
+        is_candidate_owner = (
+            request.user.role == 'CANDIDATE'
+            and application.candidate.user == request.user
+        )
+
+        if not (is_employer_owner or is_candidate_owner):
             return Response(
                 {'error': 'You do not have permission to view logs for this application.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -197,3 +276,28 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         logs = application.logs.all()
         serializer = ApplicationLogSerializer(logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class SavedJobViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for candidate saved/bookmarked jobs.
+    Only candidates can access this — enforced via IsCandidate permission.
+    """
+    permission_classes = [IsCandidate]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def get_serializer_class(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return SavedJobReadSerializer
+        return SavedJobCreateSerializer
+
+    def get_queryset(self):
+        return (
+            SavedJob.objects
+            .filter(candidate__user=self.request.user)
+            .select_related('job__employer')
+        )
+
+    def perform_create(self, serializer):
+        candidate = Candidate.objects.get(user=self.request.user)
+        serializer.save(candidate=candidate)

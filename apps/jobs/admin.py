@@ -9,5 +9,10 @@ class ApplicationAdmin(admin.ModelAdmin):
     list_display = ('id', 'candidate', 'job', 'status', 'applied_on')
     list_filter = ('status',)
 
+class SavedJobAdmin(admin.ModelAdmin):
+    list_display = ('id', 'candidate', 'job', 'saved_at')
+    list_filter = ('saved_at',)
+
 admin.site.register(Application, ApplicationAdmin)
 admin.site.register(Job, JobAdmin)
+admin.site.register(SavedJob, SavedJobAdmin)

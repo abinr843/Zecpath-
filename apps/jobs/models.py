@@ -96,3 +96,19 @@ class ApplicationLog(models.Model):
 
     def __str__(self):
         return f"App {self.application_id}: {self.old_status} -> {self.new_status} by {self.user}"
+
+
+class SavedJob(models.Model):
+    """
+    Allows candidates to bookmark/save jobs they are interested in.
+    """
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='saved_jobs')
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='saved_by')
+    saved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (('candidate', 'job'),)
+        ordering = ['-saved_at']
+
+    def __str__(self):
+        return f"{self.candidate.user.email} saved {self.job.title}"
