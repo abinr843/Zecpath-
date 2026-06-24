@@ -42,6 +42,7 @@ class Job(models.Model):
 
     # System Fields
     is_active = models.BooleanField(default=True)
+    is_flagged = models.BooleanField(default=False, help_text="Flagged by admin for moderation review")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

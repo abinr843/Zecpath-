@@ -18,6 +18,7 @@ class CustomUser(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='CANDIDATE')
 
     is_verified = models.BooleanField(default=False)
+    is_flagged = models.BooleanField(default=False, help_text="Flagged by admin for moderation review")
 
     # but we can explicitly add an updated field:
     updated_at = models.DateTimeField(auto_now=True)

@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'apps.users',
     'rest_framework',
     'apps.jobs',
+    'apps.admin_panel',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders'
 ]
