@@ -4,6 +4,8 @@ from rest_framework import generics, status, permissions
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.filters import SearchFilter
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import CustomUser, Candidate
@@ -30,13 +32,13 @@ class UserList(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class CandidateList(APIView):
-    """Return all candidate profiles."""
-
-    def get(self, request):
-        candidates = Candidate.objects.all()
-        serializer = CandidateSerializer(candidates, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+class CandidateList(generics.ListAPIView):
+    """Return all candidate profiles, with search and filtering capabilities."""
+    queryset = Candidate.objects.filter(is_active=True)
+    serializer_class = CandidateSerializer
+    filter_backends = (DjangoFilterBackend, SearchFilter)
+    search_fields = ('skills', 'headline', 'bio', 'location', 'education', 'user__first_name', 'user__last_name', 'user__email')
+    filterset_fields = ('willing_to_relocate', 'experience_years')
 
 
 # ---------------------------------------------------------------------------

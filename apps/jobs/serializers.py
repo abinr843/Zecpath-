@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
-from apps.jobs.models import Job, Application, ApplicationLog, SavedJob
-from apps.users.models import Candidate, CustomUser
+from apps.jobs.models import Job, Application, ApplicationLog, SavedJob, Offer
+from apps.users.models import Candidate, CustomUser, Employer
 
 
 class JobSerializer(serializers.ModelSerializer):
@@ -111,3 +111,20 @@ class SavedJobCreateSerializer(serializers.ModelSerializer):
         model = SavedJob
         fields = ('id', 'job')
         read_only_fields = ('id',)
+
+
+class NestedEmployerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Employer
+        fields = ('id', 'company_name', 'logo')
+
+
+class OfferSerializer(serializers.ModelSerializer):
+    employer_details = NestedEmployerSerializer(source='employer', read_only=True)
+    candidate_details = NestedCandidateSerializer(source='candidate', read_only=True)
+    job_details = NestedJobSerializer(source='job', read_only=True)
+
+    class Meta:
+        model = Offer
+        fields = ('id', 'employer', 'candidate', 'job', 'message', 'status', 'created_at', 'updated_at', 'employer_details', 'candidate_details', 'job_details')
+        read_only_fields = ('id', 'employer', 'created_at', 'updated_at')

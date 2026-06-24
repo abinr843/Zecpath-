@@ -12,6 +12,7 @@ router = DefaultRouter()
 router.register(r'listings', JobViewSet, basename='job')
 router.register(r'applications', ApplicationViewSet, basename='application')
 router.register(r'saved-jobs', SavedJobViewSet, basename='saved-job')
+router.register(r'offers', OfferViewSet, basename='offer')
 
 urlpatterns = [
     path('', include(router.urls)),

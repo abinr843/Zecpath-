@@ -113,3 +113,27 @@ class SavedJob(models.Model):
 
     def __str__(self):
         return f"{self.candidate.user.email} saved {self.job.title}"
+
+
+class Offer(models.Model):
+    """
+    Direct job offer from an Employer to a Candidate.
+    """
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined'),
+    )
+    employer = models.ForeignKey(Employer, on_delete=models.CASCADE, related_name='offers_made')
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='offers_received')
+    job = models.ForeignKey(Job, on_delete=models.SET_NULL, null=True, blank=True, related_name='offers', help_text="Optional associated job listing")
+    message = models.TextField(blank=True, help_text="Message to the candidate")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Offer from {self.employer.company_name} to {self.candidate.user.email}"

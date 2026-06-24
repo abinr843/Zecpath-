@@ -9,11 +9,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.users.models import Employer, Candidate
 from apps.jobs.permissions import IsEmployer, IsCandidate, IsApplicationOwnerOrEmployer, IsJobOwner, IsJobAuthor
-from .models import Job, Application, ApplicationLog, SavedJob
+from .models import Job, Application, ApplicationLog, SavedJob, Offer
 from .serializers import (
     JobSerializer, ApplicationSerializer, ApplicationStatusUpdateSerializer,
     ApplicationReadSerializer, ApplicationLogSerializer,
-    SavedJobReadSerializer, SavedJobCreateSerializer,
+    SavedJobReadSerializer, SavedJobCreateSerializer, OfferSerializer
 )
 from .services import process_new_application, update_application_status
 from .filters import ApplicationFilter
@@ -301,3 +301,28 @@ class SavedJobViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         candidate = Candidate.objects.get(user=self.request.user)
         serializer.save(candidate=candidate)
+
+
+class OfferViewSet(viewsets.ModelViewSet):
+    serializer_class = OfferSerializer
+    filter_backends = (DjangoFilterBackend, OrderingFilter)
+    filterset_fields = ('status',)
+    ordering_fields = ('created_at',)
+    ordering = ('-created_at',)
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsEmployer()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'EMPLOYER':
+            return Offer.objects.filter(employer__user=user).select_related('candidate__user', 'job')
+        elif user.role == 'CANDIDATE':
+            return Offer.objects.filter(candidate__user=user).select_related('employer__user', 'job')
+        return Offer.objects.none()
+
+    def perform_create(self, serializer):
+        employer_profile = Employer.objects.get(user=self.request.user)
+        serializer.save(employer=employer_profile)

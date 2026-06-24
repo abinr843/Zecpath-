@@ -34,10 +34,12 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class CandidateSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
     class Meta:
         model = Candidate
         fields = '__all__'
-        read_only_fields = ['id','user','is_active']
+        read_only_fields = ['id', 'user', 'is_active']
 
     def validate_experience_years(self, value):
         if value < 0:
