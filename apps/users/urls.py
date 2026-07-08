@@ -13,6 +13,7 @@ urlpatterns = [
     path('profile/candidate/', CandidateProfile.as_view(), name='candidate_profile'),
     path('profile/employer/', EmployerProfile.as_view(), name='employer_profile'),
     path('candidate/', CandidateList.as_view(), name='Candidate-list'),
+    path('parse-resume/', ParseResumeAPIView.as_view(), name='parse-resume'),
     path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('login/', CustomTokenObtainPairView.as_view(), name='login'),
 

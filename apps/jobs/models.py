@@ -40,6 +40,11 @@ class Job(models.Model):
                                        help_text="Comma-separated skills (e.g., Python, Django, React)")
     application_deadline = models.DateField(blank=True, null=True)
 
+    # ATS Automation Thresholds
+    auto_reject_threshold = models.IntegerField(blank=True, null=True, help_text="Auto-reject if match score is below this %")
+    auto_shortlist_threshold = models.IntegerField(blank=True, null=True, help_text="Auto-shortlist if match score is above this %")
+    must_have_skills = models.CharField(max_length=255, blank=True, null=True, help_text="Comma-separated absolute dealbreakers")
+
     # System Fields
     is_active = models.BooleanField(default=True)
     is_flagged = models.BooleanField(default=False, help_text="Flagged by admin for moderation review")
@@ -71,6 +76,8 @@ class Application(models.Model):
                                       help_text="Private notes for the employer to review the candidate")
 
     status = models.CharField(choices=STATUS_CHOICES, default='applied', max_length=100)
+    match_score = models.IntegerField(default=0, help_text="ATS suitability score (0-100)")
+    match_details = models.JSONField(default=dict, blank=True, help_text="Scoring breakdown by category")
     applied_on = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -89,7 +89,7 @@ class Candidate(models.Model):
     skills = models.CharField(max_length=500, blank=True, help_text="e.g., Python, Django, React, Neo4j")
     languages = models.CharField(max_length=255, blank=True, help_text="e.g., English, Malayalam, German")
     education = models.CharField(max_length=255, blank=True, help_text="Highest degree or current study")
-    experience_years = models.PositiveIntegerField(default=0)
+    experience_years = models.FloatField(default=0.0)
     expected_salary = models.PositiveIntegerField(blank=True, null=True, help_text="Expected annual salary")
 
     # Location & Logistics

@@ -59,18 +59,26 @@ def process_new_application(candidate, job, cover_letter=None):
         candidate.user.email, job.title, application.id,
     )
 
-    # 7. (Placeholder) Trigger ATS scoring engine here later
+    # 7. Trigger ATS scoring engine via Background Task (Celery)
+    try:
+        from .tasks import process_application_ats_task
+        # Hand the ticket to the broker (Celery) and don't wait for it
+        process_application_ats_task.delay(application.id)
+        logger.info("Handed ATS scoring ticket to Celery for application %d", application.id)
+    except Exception as exc:
+        logger.exception("Failed to dispatch Celery task for application %d: %s", application.id, exc)
 
     return application
 
 
 VALID_TRANSITIONS = {
-    'applied': ['under_review', 'rejected'],
-    'under_review': ['shortlisted', 'rejected'],
-    'shortlisted': ['interviewing', 'rejected'],
-    'interviewing': ['hired', 'rejected'],
-    'hired': [], # Terminal state
-    'rejected': [], # Terminal state
+    'applied': ['under_review', 'shortlisted', 'rejected'],
+    'under_review': ['shortlisted', 'rejected', 'interviewing'],
+    'shortlisted': ['interviewing', 'rejected', 'offered'],
+    'interviewing': ['offered', 'rejected'],
+    'offered': ['hired', 'rejected'],
+    'hired': [],
+    'rejected': ['shortlisted', 'under_review']
 }
 
 def update_application_status(application, new_status, user, notes=''):
@@ -95,18 +103,23 @@ def update_application_status(application, new_status, user, notes=''):
                 )
         return application
 
-    # Enforce Locked Stages
-    if old_status in ['hired', 'rejected']:
-        raise ValidationError(
-            {"status": ["This application is locked. Status cannot be changed."]}
-        )
+    # Allow manual override for rejected apps (Day 26)
+    if old_status == 'hired':
+        raise ValidationError(f"Cannot change status from terminal state: {old_status}")
 
-    # Enforce Linear Progression
-    allowed_next_states = VALID_TRANSITIONS.get(old_status, [])
-    if new_status not in allowed_next_states:
-        raise ValidationError(
-            {"status": [f"Invalid transition from '{old_status}' to '{new_status}'. Allowed states: {allowed_next_states}"]}
-        )
+    valid_next_states = VALID_TRANSITIONS.get(old_status, [])
+    if new_status not in valid_next_states and old_status != new_status:
+        raise ValidationError(f"Invalid transition from {old_status} to {new_status}")
+
+    # Log the Activity
+    if user:
+        from .models import ActivityLog
+        ActivityLog.objects.create(
+            job=application.job,
+            user=user,
+            action_type='STATUS_CHANGE',
+            description=f"Status changed from {old_status} to {new_status} for candidate {application.candidate.user.email}. Notes: {notes}"
+        )    
 
     # Apply changes atomically
     with transaction.atomic():
@@ -127,7 +140,7 @@ def update_application_status(application, new_status, user, notes=''):
 
     logger.info(
         "Application %d status updated: %s -> %s by user %s",
-        application.id, old_status, new_status, user.email,
+        application.id, old_status, new_status, user.email if user else "SYSTEM",
     )
 
     return application

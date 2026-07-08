@@ -36,6 +36,8 @@ class NestedJobSerializer(serializers.ModelSerializer):
 class ApplicationReadSerializer(serializers.ModelSerializer):
     candidate = NestedCandidateSerializer(read_only=True)
     job = NestedJobSerializer(read_only=True)
+    match_score = serializers.IntegerField(read_only=True)
+    match_details = serializers.JSONField(read_only=True)
 
     class Meta:
         model = Application
@@ -47,7 +49,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Application
         fields = '__all__'
-        read_only_fields = ['id', 'candidate', 'status', 'employer_notes', 'applied_on', 'resume_snapshot']
+        read_only_fields = ['id', 'candidate', 'status', 'employer_notes', 'applied_on', 'resume_snapshot', 'match_score', 'match_details']
 
     def validate(self, attrs):
         job = attrs.get('job')

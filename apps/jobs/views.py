@@ -129,8 +129,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     filter_backends = (DjangoFilterBackend, SearchFilter, OrderingFilter)
     filterset_class = ApplicationFilter
     search_fields = ['candidate__user__first_name', 'candidate__user__last_name', 'candidate__user__email', 'candidate__skills']
-    ordering_fields = ('applied_on', 'status')
-    ordering = ('-applied_on',)
+    ordering_fields = ('applied_on', 'status', 'match_score')
+    ordering = ('-match_score', '-applied_on')
 
     def get_serializer_class(self):
         if self.request.method in permissions.SAFE_METHODS:

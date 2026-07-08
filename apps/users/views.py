@@ -1,4 +1,5 @@
 import logging
+import os
 
 from rest_framework import generics, status, permissions
 from rest_framework.permissions import AllowAny
@@ -12,6 +13,8 @@ from .models import CustomUser, Candidate
 from .serializers import UserSerializer, CandidateSerializer, EmployerSerializer, CustomTokenObtainPairSerializer
 from .services import create_candidate_account, create_employer_account
 from .permissions import IsProfileOwnerOrAdmin
+from .utils.resume_parser import process_resume
+from .utils.resume_nlp import parse_resume_to_json
 
 logger = logging.getLogger(__name__)
 
@@ -110,3 +113,61 @@ class CandidateProfile(generics.RetrieveUpdateDestroyAPIView):
     def perform_destroy(self, instance):
         instance.is_active = False  # soft delete logic
         instance.save()
+
+
+# ---------------------------------------------------------------------------
+# Resume Parsing
+# ---------------------------------------------------------------------------
+
+class ParseResumeAPIView(APIView):
+    """
+    POST /api/users/parse-resume/
+    Upload a PDF or DOCX resume file and receive cleaned, extracted text.
+
+    Accepts: multipart/form-data with a 'resume' file field.
+    Returns: JSON with file_type, cleaned_text, character_count, line_count.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        resume_file = request.FILES.get('resume')
+
+        if not resume_file:
+            return Response(
+                {'error': 'No resume file provided. Send a file under the "resume" field.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        filename = resume_file.name
+        ext = os.path.splitext(filename)[1].lower()
+
+        if ext not in {'.pdf', '.docx', '.doc'}:
+            return Response(
+                {'error': f'Unsupported file type "{ext}". Allowed: .pdf, .docx, .doc'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = process_resume(resume_file, filename)
+        except ValueError as exc:
+            return Response(
+                {'error': str(exc)},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        except Exception as exc:
+            logger.exception("Resume parsing failed for %s", filename)
+            return Response(
+                {'error': 'An unexpected error occurred while parsing the resume.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        # Run NLP extraction on the cleaned text
+        parsed_data = parse_resume_to_json(result['cleaned_text'])
+
+        return Response({
+            'filename': filename,
+            'file_type': result['file_type'],
+            'cleaned_text': result['cleaned_text'],
+            'character_count': result['character_count'],
+            'line_count': result['line_count'],
+            'parsed_data': parsed_data,
+        }, status=status.HTTP_200_OK)
