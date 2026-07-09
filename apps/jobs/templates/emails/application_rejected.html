@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0; padding:0; background-color:#f4f6f9; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f9; padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #6b7280, #9ca3af); padding:32px 40px; text-align:center;">
+              <h1 style="color:#ffffff; margin:0; font-size:24px; font-weight:600;">Application Update</h1>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px 40px;">
+              <p style="color:#1f2937; font-size:16px; line-height:1.6; margin:0 0 16px;">
+                Hi <strong>{{ candidate_name }}</strong>,
+              </p>
+              <p style="color:#4b5563; font-size:15px; line-height:1.6; margin:0 0 24px;">
+                Thank you for applying for the <strong>{{ job_title }}</strong> position at <strong>{{ company_name }}</strong>.
+              </p>
+              <p style="color:#4b5563; font-size:15px; line-height:1.6; margin:0 0 24px;">
+                After carefully reviewing your application, we have decided to move forward with other candidates at this time. We genuinely appreciate your interest and the time you invested.
+              </p>
+              <!-- Encouragement Card -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f9ff; border-radius:8px; border:1px solid #bae6fd; margin-bottom:24px;">
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <p style="color:#0c4a6e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin:0 0 12px; font-weight:600;">Keep going!</p>
+                    <ul style="color:#0369a1; font-size:14px; line-height:1.8; margin:0; padding-left:20px;">
+                      <li>Continue browsing open positions on Zecpath</li>
+                      <li>Update your profile and skills to improve future matches</li>
+                      <li>Apply for other roles that align with your experience</li>
+                    </ul>
+                  </td>
+                </tr>
+              </table>
+              <p style="color:#4b5563; font-size:15px; line-height:1.6; margin:0;">
+                We wish you the very best in your job search.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f9fafb; padding:20px 40px; text-align:center; border-top:1px solid #e5e7eb;">
+              <p style="color:#9ca3af; font-size:12px; margin:0;">
+                Best regards, The {{ company_name }} Hiring Team · Powered by Zecpath
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

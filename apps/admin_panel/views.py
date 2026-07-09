@@ -4,6 +4,8 @@ from datetime import timedelta
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from rest_framework import generics, status, filters
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -18,6 +20,7 @@ from .serializers import (
     AdminUserSerializer,
     AdminEmployerSerializer,
     AdminJobSerializer,
+    AdminEmailLogSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,7 @@ class PlatformStatsView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminRole]
 
+    @method_decorator(cache_page(60))  # Cache for 60 seconds
     def get(self, request):
         data = {
             'total_users': CustomUser.objects.count(),
@@ -83,6 +87,7 @@ class UserGrowthStatsView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminRole]
 
+    @method_decorator(cache_page(120))  # Cache for 2 minutes
     def get(self, request):
         thirty_days_ago = timezone.now() - timedelta(days=30)
         signups = (
@@ -104,6 +109,7 @@ class JobActivityStatsView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminRole]
 
+    @method_decorator(cache_page(120))  # Cache for 2 minutes
     def get(self, request):
         thirty_days_ago = timezone.now() - timedelta(days=30)
         jobs = (
@@ -321,6 +327,7 @@ class RestoreJobView(APIView):
 # 4. DATA LISTING (for frontend tables)
 # ===========================================================================
 
+@method_decorator(cache_page(60), name='list')  # Cache user list for 1 minute
 class AdminUserListView(generics.ListAPIView):
     """
     GET /api/admin/users/
@@ -352,6 +359,7 @@ class AdminUserListView(generics.ListAPIView):
         return qs
 
 
+@method_decorator(cache_page(60), name='list')  # Cache employer list for 1 minute
 class AdminEmployerListView(generics.ListAPIView):
     """
     GET /api/admin/employers/
@@ -374,6 +382,7 @@ class AdminEmployerListView(generics.ListAPIView):
         return qs
 
 
+@method_decorator(cache_page(60), name='list')  # Cache job list for 1 minute
 class AdminJobListView(generics.ListAPIView):
     """
     GET /api/admin/jobs/
@@ -387,7 +396,7 @@ class AdminJobListView(generics.ListAPIView):
     ordering = ['-created_at']
 
     def get_queryset(self):
-        qs = Job.objects.select_related('employer').all()
+        qs = Job.objects.select_related('employer__user').all()
 
         is_active = self.request.query_params.get('is_active')
         if is_active is not None:
@@ -404,6 +413,7 @@ class AdminJobListView(generics.ListAPIView):
 # 5. AUDIT LOGS
 # ===========================================================================
 
+@method_decorator(cache_page(60), name='list')  # Cache audit logs for 1 minute
 class AuditLogListView(generics.ListAPIView):
     """
     GET /api/admin/audit-logs/
@@ -422,3 +432,70 @@ class AuditLogListView(generics.ListAPIView):
             qs = qs.filter(action_type=action_type)
 
         return qs
+
+
+# ===========================================================================
+# 6. EMAIL LOGS (Communication Monitoring)
+# ===========================================================================
+
+@method_decorator(cache_page(60), name='list')  # Cache email logs for 1 minute
+class AdminEmailLogListView(generics.ListAPIView):
+    """
+    GET /api/admin/email-logs/
+    Paginated, filterable list of all email delivery logs.
+    Supports ?status=, ?email_type=, ?search= query params.
+    """
+    serializer_class = AdminEmailLogSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['recipient_email', 'subject']
+    ordering_fields = ['created_at', 'status', 'email_type']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        from apps.jobs.models import EmailLog
+        qs = EmailLog.objects.select_related('application__job', 'application__candidate__user').all()
+
+        email_status = self.request.query_params.get('status')
+        if email_status:
+            qs = qs.filter(status=email_status)
+
+        email_type = self.request.query_params.get('email_type')
+        if email_type:
+            qs = qs.filter(email_type=email_type)
+
+        return qs
+
+
+class EmailLogStatsView(APIView):
+    """
+    GET /api/admin/email-logs/stats/
+    Returns email delivery statistics.
+    """
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @method_decorator(cache_page(120))  # Cache email stats for 2 minutes
+    def get(self, request):
+        from apps.jobs.models import EmailLog
+        from django.db.models import Count
+
+        total = EmailLog.objects.count()
+        by_status = dict(
+            EmailLog.objects.values_list('status')
+            .annotate(count=Count('id'))
+            .values_list('status', 'count')
+        )
+        by_type = list(
+            EmailLog.objects.values('email_type')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+
+        data = {
+            'total': total,
+            'sent': by_status.get('sent', 0),
+            'failed': by_status.get('failed', 0),
+            'pending': by_status.get('pending', 0),
+            'by_type': by_type,
+        }
+        return Response(data, status=status.HTTP_200_OK)

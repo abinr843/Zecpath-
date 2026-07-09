@@ -1,0 +1,15 @@
+Hi {{ candidate_name }},
+
+Great news! You've been shortlisted for the {{ job_title }} position at {{ company_name }}.
+
+Our team was very impressed by your background and qualifications. We will be in touch soon with the next steps in the hiring process.
+
+What to expect next:
+- Our hiring team may reach out to schedule an interview
+- Keep an eye on your email and Zecpath dashboard for updates
+- Make sure your contact information is up to date
+
+We look forward to getting to know you better!
+
+Best regards,
+The {{ company_name }} Hiring Team

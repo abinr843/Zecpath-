@@ -16,3 +16,12 @@ class SavedJobAdmin(admin.ModelAdmin):
 admin.site.register(Application, ApplicationAdmin)
 admin.site.register(Job, JobAdmin)
 admin.site.register(SavedJob, SavedJobAdmin)
+
+
+class EmailLogAdmin(admin.ModelAdmin):
+    list_display = ('id', 'email_type', 'recipient_email', 'status', 'retry_count', 'created_at', 'updated_at')
+    list_filter = ('status', 'email_type')
+    search_fields = ('recipient_email', 'subject')
+    readonly_fields = ('application', 'recipient_email', 'subject', 'body', 'email_type', 'status', 'error_message', 'retry_count', 'created_at', 'updated_at')
+
+admin.site.register(EmailLog, EmailLogAdmin)

@@ -1,6 +1,8 @@
 import logging
 
 from django.db.models import Q
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -32,10 +34,14 @@ class JobViewSet(viewsets.ModelViewSet):
     ordering = ('-created_at',)
 
     def get_queryset(self):
-        qs = Job.objects.select_related('employer').annotate(applicant_count=Count('applications'))
+        qs = Job.objects.select_related('employer__user').annotate(applicant_count=Count('applications'))
         if self.request.user.is_authenticated and self.request.user.role == 'EMPLOYER':
             return qs.filter(employer__user=self.request.user)
         return qs.filter(is_active=True)
+
+    @method_decorator(cache_page(60 * 5))  # Cache job listings for 5 minutes
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def get_permissions(self):
         # If the user is just viewing jobs (GET request), they only need to be logged in
@@ -56,6 +62,7 @@ class JobViewSet(viewsets.ModelViewSet):
         job.save()
         return Response({'status': 'Hiring closed'}, status=status.HTTP_200_OK)
 
+    @method_decorator(cache_page(60 * 2))  # Cache analytics for 2 minutes
     @action(detail=False, methods=['get'], url_path='analytics')
     def analytics(self, request):
         if request.user.role != 'EMPLOYER':
@@ -82,6 +89,7 @@ class JobViewSet(viewsets.ModelViewSet):
             'hired': hired,
         })
 
+    @method_decorator(cache_page(60 * 5))  # Cache recommendations for 5 minutes
     @action(detail=False, methods=['get'], url_path='recommended', permission_classes=[IsCandidate])
     def recommended(self, request):
         """
@@ -111,7 +119,7 @@ class JobViewSet(viewsets.ModelViewSet):
         jobs = (
             Job.objects
             .filter(skill_query, is_active=True)
-            .select_related('employer')
+            .select_related('employer__user')
             .distinct()
         )
 
@@ -158,13 +166,13 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             return (
                 Application.objects
                 .filter(candidate__user=user)
-                .select_related('candidate__user', 'job__employer')
+                .select_related('candidate__user', 'job__employer__user')
             )
         elif user.role == 'EMPLOYER':
             return (
                 Application.objects
                 .filter(job__employer__user=user)
-                .select_related('candidate__user', 'job__employer')
+                .select_related('candidate__user', 'job__employer__user')
             )
 
         # Admin or unknown fallback gets nothing
@@ -186,6 +194,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             cover_letter=cover_letter,
         )
 
+    @method_decorator(cache_page(60 * 2))  # Cache candidate analytics for 2 minutes
     @action(detail=False, methods=['get'], url_path='candidate-analytics', permission_classes=[IsCandidate])
     def candidate_analytics(self, request):
         """
@@ -248,6 +257,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         return Response(ApplicationSerializer(application).data, status=status.HTTP_200_OK)
 
+    @method_decorator(cache_page(60))  # Cache logs for 1 minute
     @action(detail=True, methods=['get'], url_path='logs')
     def logs(self, request, pk=None):
         """
@@ -273,7 +283,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        logs = application.logs.all()
+        logs = application.logs.select_related('user').all()
         serializer = ApplicationLogSerializer(logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

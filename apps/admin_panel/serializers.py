@@ -65,3 +65,18 @@ class AdminJobSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = fields
+
+
+class AdminEmailLogSerializer(serializers.ModelSerializer):
+    """Email log data for admin communication monitoring."""
+    application_id = serializers.IntegerField(source='application.id', read_only=True, default=None)
+
+    class Meta:
+        from apps.jobs.models import EmailLog
+        model = EmailLog
+        fields = [
+            'id', 'application_id', 'recipient_email', 'subject',
+            'body', 'email_type', 'status', 'error_message',
+            'retry_count', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields

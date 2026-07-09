@@ -30,9 +30,9 @@ class Job(models.Model):
     description = models.TextField()
 
     # Advanced Platform Fields
-    employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPE_CHOICES, default='full_time')
-    location_type = models.CharField(max_length=20, choices=LOCATION_TYPE_CHOICES, default='onsite')
-    location = models.CharField(max_length=255, blank=True, null=True, help_text="e.g., Adoor, Kerala or Remote")
+    employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPE_CHOICES, default='full_time', db_index=True)
+    location_type = models.CharField(max_length=20, choices=LOCATION_TYPE_CHOICES, default='onsite', db_index=True)
+    location = models.CharField(max_length=255, blank=True, null=True, db_index=True, help_text="e.g., Adoor, Kerala or Remote")
     salary_min = models.PositiveIntegerField(blank=True, null=True, help_text="Minimum salary limit")
     salary_max = models.PositiveIntegerField(blank=True, null=True, help_text="Maximum salary limit")
     experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVEL_CHOICES, default='entry')
@@ -46,9 +46,9 @@ class Job(models.Model):
     must_have_skills = models.CharField(max_length=255, blank=True, null=True, help_text="Comma-separated absolute dealbreakers")
 
     # System Fields
-    is_active = models.BooleanField(default=True)
-    is_flagged = models.BooleanField(default=False, help_text="Flagged by admin for moderation review")
-    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    is_flagged = models.BooleanField(default=False, db_index=True, help_text="Flagged by admin for moderation review")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     def __str__(self):
         return f"{self.title} at {self.employer.company_name}"
@@ -75,10 +75,10 @@ class Application(models.Model):
     employer_notes = models.TextField(blank=True, null=True,
                                       help_text="Private notes for the employer to review the candidate")
 
-    status = models.CharField(choices=STATUS_CHOICES, default='applied', max_length=100)
+    status = models.CharField(choices=STATUS_CHOICES, default='applied', max_length=100, db_index=True)
     match_score = models.IntegerField(default=0, help_text="ATS suitability score (0-100)")
     match_details = models.JSONField(default=dict, blank=True, help_text="Scoring breakdown by category")
-    applied_on = models.DateTimeField(auto_now_add=True)
+    applied_on = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         unique_together = (('candidate', 'job'),)
@@ -144,3 +144,47 @@ class Offer(models.Model):
 
     def __str__(self):
         return f"Offer from {self.employer.company_name} to {self.candidate.user.email}"
+
+
+class EmailLog(models.Model):
+    """
+    Tracks every outgoing email for audit, debugging, and retry visibility.
+    Each record represents one email send attempt.
+    """
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('sent', 'Sent'),
+        ('failed', 'Failed'),
+    )
+
+    application = models.ForeignKey(
+        Application, on_delete=models.CASCADE,
+        related_name='email_logs', null=True, blank=True,
+        help_text="The application this email relates to (if any)"
+    )
+    recipient_email = models.EmailField(help_text="Recipient email address")
+    subject = models.CharField(max_length=500)
+    body = models.TextField(blank=True, help_text="Email body content")
+    email_type = models.CharField(
+        max_length=50, blank=True,
+        help_text="E.g. application_submitted, shortlisted, rejected"
+    )
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default='pending'
+    )
+    error_message = models.TextField(
+        blank=True, help_text="Error details if the send failed"
+    )
+    retry_count = models.PositiveIntegerField(
+        default=0, help_text="Number of retry attempts made"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Email Log'
+        verbose_name_plural = 'Email Logs'
+
+    def __str__(self):
+        return f"[{self.status}] {self.email_type} → {self.recipient_email} ({self.created_at:%Y-%m-%d %H:%M})"

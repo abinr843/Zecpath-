@@ -8,6 +8,11 @@ from .validators import validate_job_is_active, validate_application_deadline, v
 
 logger = logging.getLogger(__name__)
 
+# ─── Lazy import helpers to avoid circular imports ────
+def _get_email_helpers():
+    from .tasks import send_application_submitted_email, send_status_change_email
+    return send_application_submitted_email, send_status_change_email
+
 
 def process_new_application(candidate, job, cover_letter=None):
     """
@@ -59,12 +64,20 @@ def process_new_application(candidate, job, cover_letter=None):
         candidate.user.email, job.title, application.id,
     )
 
-    # 7. Trigger ATS scoring engine via Background Task (Celery)
+    # 7. Send immediate "Application Received" confirmation email
+    try:
+        send_submitted, _ = _get_email_helpers()
+        send_submitted(application)
+        logger.info("Queued application-submitted email for application %d", application.id)
+    except Exception as exc:
+        logger.exception("Failed to queue confirmation email for application %d: %s", application.id, exc)
+
+    # 8. Trigger ATS scoring engine via Background Task (Celery)
+    #    15-second countdown so ATS processing feels realistic
     try:
         from .tasks import process_application_ats_task
-        # Hand the ticket to the broker (Celery) and don't wait for it
-        process_application_ats_task.delay(application.id)
-        logger.info("Handed ATS scoring ticket to Celery for application %d", application.id)
+        process_application_ats_task.apply_async(args=[application.id], countdown=15)
+        logger.info("Handed ATS scoring ticket to Celery (countdown=15s) for application %d", application.id)
     except Exception as exc:
         logger.exception("Failed to dispatch Celery task for application %d: %s", application.id, exc)
 
@@ -142,5 +155,21 @@ def update_application_status(application, new_status, user, notes=''):
         "Application %d status updated: %s -> %s by user %s",
         application.id, old_status, new_status, user.email if user else "SYSTEM",
     )
+
+    # ─── Trigger email notification for manual employer status changes ───
+    # Only send if a real user (not SYSTEM) triggered the change
+    if user and new_status in ('shortlisted', 'rejected', 'under_review'):
+        try:
+            _, send_change = _get_email_helpers()
+            send_change(application, new_status)
+            logger.info(
+                "Queued %s email for application %d (manual action by %s)",
+                new_status, application.id, user.email,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Failed to queue %s email for application %d: %s",
+                new_status, application.id, exc,
+            )
 
     return application

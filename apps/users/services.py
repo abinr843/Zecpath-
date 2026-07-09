@@ -15,18 +15,12 @@ logger = logging.getLogger(__name__)
 
 def send_welcome_email(user):
     """
-    Sends a welcome email to a newly registered user.
-    Currently a stub that logs the action; replace the body with
-    a real email backend (SendGrid, SES, etc.) when ready.
+    Sends a welcome email to a newly registered user
+    via the async Celery email pipeline (with retries and logging).
     """
     try:
-        send_mail(
-            subject="Welcome to ZecPath!",
-            message=f"Hi {user.username}, thanks for joining ZecPath.",
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@zecpath.com'),
-            recipient_list=[user.email],
-            fail_silently=True,
-        )
+        from apps.jobs.tasks import send_welcome_email_async
+        send_welcome_email_async(user)
         logger.info("Welcome email queued for %s", user.email)
     except Exception as exc:
         # Never let an email failure break the registration flow

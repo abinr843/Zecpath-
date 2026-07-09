@@ -137,6 +137,17 @@ DATABASES = {
     }
 }
 
+# Add the real SMTP configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+
+# This is what the user will see in their inbox!
+DEFAULT_FROM_EMAIL = f"Zecpath ATS <{EMAIL_HOST_USER}>"
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -180,9 +191,26 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# ─── EMAIL SETTINGS ────────────────────────
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'noreply@zecpath.com'
+# ─── CACHING CONFIGURATION ─────────────────
+# Using LocMemCache for development. For production with multiple
+# workers / processes, switch to django-redis:
+#   CACHES = {
+#       'default': {
+#           'BACKEND': 'django_redis.cache.RedisCache',
+#           'LOCATION': 'redis://127.0.0.1:6379/1',
+#           'OPTIONS': { 'CLIENT_CLASS': 'django_redis.client.DefaultClient' },
+#       }
+#   }
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'zecpath-cache',
+        'TIMEOUT': 300,  # Default 5-minute TTL
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+        },
+    }
+}
 
 
 # ─── CELERY CONFIGURATION ──────────────────

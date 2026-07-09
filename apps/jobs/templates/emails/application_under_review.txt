@@ -1,0 +1,15 @@
+Hi {{ candidate_name }},
+
+Thank you for applying for the {{ job_title }} position at {{ company_name }}.
+
+Your application is currently under review by our hiring team. We are carefully evaluating your qualifications and experience.
+
+What this means:
+- Your profile has passed our initial screening
+- Our team is taking a closer look at your application
+- You will receive an update once a decision has been made
+
+In the meantime, you can track the status of your application by logging into your Zecpath dashboard.
+
+Best regards,
+The {{ company_name }} Hiring Team

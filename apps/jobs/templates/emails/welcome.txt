@@ -1,0 +1,16 @@
+Hi {{ user_name }},
+
+Welcome to ZecPath! 🚀
+
+We're thrilled to have you on board. ZecPath is your gateway to discovering great career opportunities and connecting with top employers.
+
+Here's what you can do next:
+- Complete your profile to stand out to employers
+- Upload your resume for automatic skills matching
+- Browse and apply to jobs that match your skills
+- Save jobs you're interested in for later
+
+Start exploring now and take the next step in your career journey!
+
+Best regards,
+The ZecPath Team

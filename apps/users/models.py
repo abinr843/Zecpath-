@@ -15,10 +15,10 @@ class CustomUser(AbstractUser):
     # 2. Add the Custom Fields
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=15, blank=True, null=True)
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='CANDIDATE')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='CANDIDATE', db_index=True)
 
     is_verified = models.BooleanField(default=False)
-    is_flagged = models.BooleanField(default=False, help_text="Flagged by admin for moderation review")
+    is_flagged = models.BooleanField(default=False, db_index=True, help_text="Flagged by admin for moderation review")
 
     # but we can explicitly add an updated field:
     updated_at = models.DateTimeField(auto_now=True)
@@ -68,7 +68,7 @@ class Employer(models.Model):
     twitter_url = models.URLField(blank=True, null=True)
 
     # System Controls
-    is_verified = models.BooleanField(default=False)
+    is_verified = models.BooleanField(default=False, db_index=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
