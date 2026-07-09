@@ -1,15 +1,20 @@
-from cProfile import Profile
+import logging
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
 
+from .models import CustomUser, Candidate, Employer
 
-from .models import *
+logger = logging.getLogger(__name__)
+
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_profile(sender, instance, created, **kwargs):
-    print(f"--> SIGNAL FIRED: User {instance.email} | Created: {created} | Role: {instance.role}")
+    logger.info(
+        "SIGNAL FIRED: User %s | Created: %s | Role: %s",
+        instance.email, created, instance.role,
+    )
 
     if created:
         # Force the role into a pure string, remove hidden spaces, and make it uppercase
@@ -17,18 +22,15 @@ def create_user_profile(sender, instance, created, **kwargs):
 
         if safe_role == 'EMPLOYER':
             Employer.objects.create(user=instance)
-            print("--> SUCCESS: Employer Profile Auto-Generated!")
+            logger.info("SUCCESS: Employer Profile Auto-Generated!")
         elif safe_role == 'CANDIDATE':
             Candidate.objects.create(user=instance)
-            print("--> SUCCESS: Candidate Profile Auto-Generated!")
+            logger.info("SUCCESS: Candidate Profile Auto-Generated!")
         else:
-            print(f"--> ERROR: No matching role found for '{safe_role}'")
+            logger.error("ERROR: No matching role found for '%s'", safe_role)
 
 def save_profile(sender, instance, **kwargs):
     if instance.role == 'employer'and hasattr(instance, 'employer'):
         instance.Employer.save()
     if instance.role == 'candidate'and hasattr(instance, 'candidate'):
         instance.Candidate.save()
-
-
-

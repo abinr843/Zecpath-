@@ -22,8 +22,12 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = '__all__'
-        read_only_fields = ('id',)
+        fields = [
+            'id', 'username', 'email', 'password', 'phone', 'role',
+            'first_name', 'last_name', 'is_verified', 'is_flagged',
+            'date_joined', 'updated_at',
+        ]
+        read_only_fields = ('id', 'date_joined', 'updated_at')
 
 
 

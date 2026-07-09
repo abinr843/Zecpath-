@@ -1,0 +1,82 @@
+===============================================================================
+ ZECPATH — SECURITY AUDIT CHECKLIST (Day 29 Hardening Phase)
+ Date: 2026-07-09
+===============================================================================
+
+1. AUTHENTICATION ENFORCEMENT
+   Endpoint                          Method  Expected  Result
+   ──────────────────────────────────────────────────────────
+   /api/jobs/listings/               GET     401       ✅ PASS — No token → 401
+   /api/jobs/listings/               GET     401       ✅ PASS — Malformed token → 401
+   /api/jobs/listings/               GET     401       ✅ PASS — Fake JWT → 401
+   /api/jobs/listings/               GET     401       ✅ PASS — Missing "Bearer" prefix → 401
+
+2. ACCESS CONTROL (ROLE ISOLATION)
+   Endpoint                          Role        Expected  Result
+   ──────────────────────────────────────────────────────────────
+   /api/admin/stats/platform/        CANDIDATE   403       ✅ PASS — Candidate blocked
+   /api/admin/users/                 CANDIDATE   403       ✅ PASS — Candidate blocked
+   /api/admin/audit-logs/            CANDIDATE   403       ✅ PASS — Candidate blocked
+   /api/admin/stats/platform/        ADMIN       200       ✅ PASS — Admin allowed
+   /api/admin/stats/users/           ADMIN       200       ✅ Verified (IsAdminRole on view)
+   /api/admin/stats/jobs/            ADMIN       200       ✅ Verified (IsAdminRole on view)
+   /api/admin/employers/             ADMIN       200       ✅ Verified (IsAdminRole on view)
+   /api/admin/jobs/                  ADMIN       200       ✅ Verified (IsAdminRole on view)
+   /api/admin/email-logs/            ADMIN       200       ✅ Verified (IsAdminRole on view)
+   /api/admin/email-logs/stats/      ADMIN       200       ✅ Verified (IsAdminRole on view)
+
+3. DATA EXPOSURE (SERIALIZER AUDIT)
+   Serializer                        Field              Status
+   ──────────────────────────────────────────────────────────
+   UserSerializer                    password           ✅ write_only=True (never in output)
+   UserSerializer                    is_superuser       ✅ EXCLUDED from fields list
+   UserSerializer                    is_staff           ✅ EXCLUDED from fields list
+   UserSerializer                    groups             ✅ EXCLUDED from fields list
+   UserSerializer                    user_permissions   ✅ EXCLUDED from fields list
+   UserSerializer                    last_login         ✅ EXCLUDED fro
+   
+   m fields list
+   ApplicationReadSerializer         employer_notes     ⚠️  Present (by design — for employers)
+   NestedUserSerializer              fields             ✅ Explicit: id, username, email, names
+   NestedCandidateSerializer         fields             ✅ Explicit: professional fields only
+
+4. FILE UPLOAD SECURITY
+   Check                             Status
+   ──────────────────────────────────────────
+   .exe upload blocked               ✅ PASS — validate_resume_ext rejects
+   .sh upload blocked                ✅ PASS — validate_resume_ext rejects
+   .pdf upload allowed               ✅ PASS — validate_resume_ext accepts
+   .docx upload allowed              ✅ PASS — validate_resume_ext accepts
+   Oversized file blocked            ✅ PASS — validate_resume_size rejects
+   Path traversal prevented          ✅ PASS — UUID rename in secure_resume_upload_path()
+   Application.resume validated      ✅ PASS — validators added to model field
+
+5. ERROR TRACKING (PRINT → LOGGING)
+   File                              Status
+   ──────────────────────────────────────────
+   apps/users/signals.py             ✅ FIXED — All print() → logging.info/error
+   jobplatform/celery.py             ✅ FIXED — print() → logger.debug()
+
+6. PERMISSION COVERAGE (ALL ADMIN VIEWS)
+   View Class                        permission_classes                Status
+   ──────────────────────────────────────────────────────────────────────────
+   PlatformStatsView                 [IsAuthenticated, IsAdminRole]    ✅ Secure
+   UserGrowthStatsView               [IsAuthenticated, IsAdminRole]    ✅ Secure
+   JobActivityStatsView              [IsAuthenticated, IsAdminRole]    ✅ Secure
+   ApproveEmployerView               [IsAuthenticated, IsAdminRole]    ✅ Secure
+   BlockUserView                     [IsAuthenticated, IsAdminRole]    ✅ Secure
+   UnblockUserView                   [IsAuthenticated, IsAdminRole]    ✅ Secure
+   FlagUserView                      [IsAuthenticated, IsAdminRole]    ✅ Secure
+   FlagJobView                       [IsAuthenticated, IsAdminRole]    ✅ Secure
+   RemoveJobView                     [IsAuthenticated, IsAdminRole]    ✅ Secure
+   RestoreJobView                    [IsAuthenticated, IsAdminRole]    ✅ Secure
+   AdminUserListView                 [IsAuthenticated, IsAdminRole]    ✅ Secure
+   AdminEmployerListView             [IsAuthenticated, IsAdminRole]    ✅ Secure
+   AdminJobListView                  [IsAuthenticated, IsAdminRole]    ✅ Secure
+   AuditLogListView                  [IsAuthenticated, IsAdminRole]    ✅ Secure
+   AdminEmailLogListView             [IsAuthenticated, IsAdminRole]    ✅ Secure
+   EmailLogStatsView                 [IsAuthenticated, IsAdminRole]    ✅ Secure
+
+===============================================================================
+ SUMMARY: All critical endpoints audited. No open security leaks found.
+===============================================================================

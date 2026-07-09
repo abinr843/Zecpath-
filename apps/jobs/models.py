@@ -1,5 +1,16 @@
+import uuid
+import os
+
 from django.db import models
 from apps.users.models import Employer, Candidate
+from apps.users.validators import validate_resume_ext, validate_resume_size
+
+
+def secure_resume_upload_path(instance, filename):
+    """Rename uploaded resumes to a UUID to prevent path traversal attacks."""
+    ext = os.path.splitext(filename)[1].lower()
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    return f"resumes/{safe_name}"
 
 
 class Job(models.Model):
@@ -70,7 +81,12 @@ class Application(models.Model):
 
     # Professional Application Attachments
     resume_snapshot = models.URLField(max_length=500, blank=True, null=True, help_text="Snapshot of the candidate's master resume URL at the time of application")
-    resume = models.FileField(upload_to='resumes/', blank=True, null=True)
+    resume = models.FileField(
+        upload_to=secure_resume_upload_path,
+        blank=True, null=True,
+        validators=[validate_resume_ext, validate_resume_size],
+        help_text="Upload PDF or DOCX (Max 5MB)"
+    )
     cover_letter = models.TextField(blank=True, null=True)
     employer_notes = models.TextField(blank=True, null=True,
                                       help_text="Private notes for the employer to review the candidate")
