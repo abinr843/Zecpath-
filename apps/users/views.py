@@ -13,8 +13,6 @@ from .models import CustomUser, Candidate
 from .serializers import UserSerializer, CandidateSerializer, EmployerSerializer, CustomTokenObtainPairSerializer
 from .services import create_candidate_account, create_employer_account
 from .permissions import IsProfileOwnerOrAdmin
-from .utils.resume_parser import process_resume
-from .utils.resume_nlp import parse_resume_to_json
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +108,14 @@ class CandidateProfile(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         return self.request.user.candidate
 
+    def perform_update(self, serializer):
+        # Extract phone from request data and update the user model
+        phone = self.request.data.get('phone')
+        if phone is not None:
+            self.request.user.phone = phone
+            self.request.user.save(update_fields=['phone', 'updated_at'])
+        serializer.save()
+
     def perform_destroy(self, instance):
         instance.is_active = False  # soft delete logic
         instance.save()
@@ -122,10 +128,11 @@ class CandidateProfile(generics.RetrieveUpdateDestroyAPIView):
 class ParseResumeAPIView(APIView):
     """
     POST /api/users/parse-resume/
-    Upload a PDF or DOCX resume file and receive cleaned, extracted text.
+    Upload a PDF or DOCX resume file and kick off async background parsing.
 
     Accepts: multipart/form-data with a 'resume' file field.
-    Returns: JSON with file_type, cleaned_text, character_count, line_count.
+    Returns: JSON with task_id for polling the result, or immediate error
+             for invalid file types.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -147,27 +154,55 @@ class ParseResumeAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            result = process_resume(resume_file, filename)
-        except ValueError as exc:
-            return Response(
-                {'error': str(exc)},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            )
-        except Exception as exc:
-            logger.exception("Resume parsing failed for %s", filename)
-            return Response(
-                {'error': 'An unexpected error occurred while parsing the resume.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        # Run NLP extraction on the cleaned text
-        parsed_data = parse_resume_to_json(result['cleaned_text'])
+        # Save the uploaded file to a temp location so the Celery worker
+        # can read it from disk (uploaded InMemoryFiles are not serializable)
+        from django.conf import settings as django_settings
+        import uuid
+
+        temp_dir = os.path.join(django_settings.MEDIA_ROOT, 'temp_resumes')
+        os.makedirs(temp_dir, exist_ok=True)
+
+        safe_name = f"{uuid.uuid4().hex}{ext}"
+        file_path = os.path.join(temp_dir, safe_name)
+
+        with open(file_path, 'wb+') as dest:
+            for chunk in resume_file.chunks():
+                dest.write(chunk)
+
+        # Dispatch the parsing to Celery
+        from apps.users.tasks import parse_resume_task
+
+        candidate = request.user.candidate
+        task = parse_resume_task.delay(candidate.id, file_path, filename)
+
+        logger.info(
+            "Resume parse dispatched to Celery: task_id=%s, candidate=%s, file=%s",
+            task.id, candidate.id, filename,
+        )
 
         return Response({
-            'filename': filename,
-            'file_type': result['file_type'],
-            'cleaned_text': result['cleaned_text'],
-            'character_count': result['character_count'],
-            'line_count': result['line_count'],
-            'parsed_data': parsed_data,
+            'message': 'Resume parsing has been queued. Check back shortly.',
+            'task_id': task.id,
+        }, status=status.HTTP_202_ACCEPTED)
+
+class TaskStatusAPIView(APIView):
+    """
+    GET /api/users/task-status/<task_id>/
+    Check the status of a Celery background task (e.g. resume parsing).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, task_id):
+        from celery.result import AsyncResult
+        result = AsyncResult(task_id)
+        
+        if result.ready():
+            return Response({
+                'status': 'completed',
+                'result': result.result
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'status': 'pending'
         }, status=status.HTTP_200_OK)
+

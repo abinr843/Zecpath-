@@ -11,11 +11,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.users.models import Employer, Candidate
 from apps.jobs.permissions import IsEmployer, IsCandidate, IsApplicationOwnerOrEmployer, IsJobOwner, IsJobAuthor
-from .models import Job, Application, ApplicationLog, SavedJob, Offer
+from .models import Job, Application, ApplicationLog, SavedJob, Offer, Notification
 from .serializers import (
     JobSerializer, ApplicationSerializer, ApplicationStatusUpdateSerializer,
     ApplicationReadSerializer, ApplicationLogSerializer,
-    SavedJobReadSerializer, SavedJobCreateSerializer, OfferSerializer
+    SavedJobReadSerializer, SavedJobCreateSerializer, OfferSerializer,
+    NotificationSerializer
 )
 from .services import process_new_application, update_application_status
 from .filters import ApplicationFilter
@@ -162,6 +163,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
 
+        if user.role == 'ADMIN' or user.is_superuser:
+            return Application.objects.select_related('candidate__user', 'job__employer__user').all()
+
         if user.role == 'CANDIDATE':
             return (
                 Application.objects
@@ -175,7 +179,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 .select_related('candidate__user', 'job__employer__user')
             )
 
-        # Admin or unknown fallback gets nothing
+        # Unknown fallback gets nothing
         return Application.objects.none()
 
     def perform_create(self, serializer):
@@ -287,6 +291,43 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         serializer = ApplicationLogSerializer(logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='interview-details')
+    def interview_details(self, request, pk=None):
+        """
+        GET /api/jobs/applications/{id}/interview-details/
+        Returns the structured interview session data (transcript_data, questions, answers, latency).
+        """
+        application = self.get_object()
+
+        # Security: allow employer who owns the job OR the candidate who applied OR ADMIN
+        is_employer_owner = (
+            request.user.role == 'EMPLOYER'
+            and application.job.employer.user == request.user
+        )
+        is_candidate_owner = (
+            request.user.role == 'CANDIDATE'
+            and application.candidate.user == request.user
+        )
+        is_admin = request.user.role == 'ADMIN' or request.user.is_superuser
+
+        if not (is_employer_owner or is_candidate_owner or is_admin):
+            return Response(
+                {'error': 'You do not have permission to view interview details for this application.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Get the latest interview session
+        session = application.interview_sessions.order_by('-created_at').first()
+        if not session:
+            return Response(
+                {'error': 'No interview session found for this application.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from .serializers import InterviewSessionDetailSerializer
+        serializer = InterviewSessionDetailSerializer(session)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class SavedJobViewSet(viewsets.ModelViewSet):
     """
@@ -336,3 +377,23 @@ class OfferViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         employer_profile = Employer.objects.get(user=self.request.user)
         serializer.save(employer=employer_profile)
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    """Candidate notifications (interview updates, status changes)."""
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({'unread_count': count})
+
+    @action(detail=False, methods=['patch'])
+    def mark_all_read(self, request):
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({'status': 'ok'})

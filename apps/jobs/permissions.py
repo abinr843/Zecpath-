@@ -24,6 +24,8 @@ class IsApplicationOwnerOrEmployer(BasePermission):
     Assumes the model instance has an `employer` or `candidate` attribute.
     """
     def has_object_permission(self, request, view, obj):
+        if request.user.role == 'ADMIN' or request.user.is_superuser:
+            return True
         if request.user.role == 'CANDIDATE':
             return obj.candidate.user == request.user
         elif request.user.role == 'EMPLOYER':

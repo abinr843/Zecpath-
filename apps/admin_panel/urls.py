@@ -16,6 +16,7 @@ from .views import (
     AuditLogListView,
     AdminEmailLogListView,
     EmailLogStatsView,
+    AdminApplicationListView,
 )
 
 app_name = 'admin_panel'
@@ -30,6 +31,7 @@ urlpatterns = [
     path('users/', AdminUserListView.as_view(), name='admin-user-list'),
     path('employers/', AdminEmployerListView.as_view(), name='admin-employer-list'),
     path('jobs/', AdminJobListView.as_view(), name='admin-job-list'),
+    path('applications/', AdminApplicationListView.as_view(), name='admin-application-list'),
 
     # --- Admin Privileges ---
     path('employers/<int:pk>/approve/', ApproveEmployerView.as_view(), name='approve-employer'),

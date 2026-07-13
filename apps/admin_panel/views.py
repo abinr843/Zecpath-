@@ -21,6 +21,7 @@ from .serializers import (
     AdminEmployerSerializer,
     AdminJobSerializer,
     AdminEmailLogSerializer,
+    AdminApplicationSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -405,6 +406,29 @@ class AdminJobListView(generics.ListAPIView):
         is_flagged = self.request.query_params.get('is_flagged')
         if is_flagged is not None:
             qs = qs.filter(is_flagged=is_flagged.lower() == 'true')
+
+        return qs
+
+
+@method_decorator(cache_page(60), name='list')  # Cache application list for 1 minute
+class AdminApplicationListView(generics.ListAPIView):
+    """
+    GET /api/admin/applications/
+    Paginated list of all applications for moderation.
+    Supports ?status= query params.
+    """
+    serializer_class = AdminApplicationSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['job__title', 'candidate__user__username', 'job__employer__company_name']
+    ordering = ['-applied_on']
+
+    def get_queryset(self):
+        qs = Application.objects.select_related('candidate__user', 'job__employer').all()
+
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
 
         return qs
 

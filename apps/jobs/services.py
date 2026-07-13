@@ -87,8 +87,11 @@ def process_new_application(candidate, job, cover_letter=None):
 VALID_TRANSITIONS = {
     'applied': ['under_review', 'shortlisted', 'rejected'],
     'under_review': ['shortlisted', 'rejected', 'interviewing'],
-    'shortlisted': ['interviewing', 'rejected', 'offered'],
-    'interviewing': ['offered', 'rejected'],
+    'shortlisted': ['ready_for_interview', 'interviewing', 'rejected', 'offered'],
+    'ready_for_interview': ['interviewing', 'not_picked_up', 'rejected'],
+    'interviewing': ['interview_completed', 'offered', 'rejected', 'not_picked_up'],
+    'interview_completed': ['offered', 'hired', 'rejected'],
+    'not_picked_up': ['ready_for_interview', 'rejected'],
     'offered': ['hired', 'rejected'],
     'hired': [],
     'rejected': ['shortlisted', 'under_review']
@@ -123,16 +126,6 @@ def update_application_status(application, new_status, user, notes=''):
     valid_next_states = VALID_TRANSITIONS.get(old_status, [])
     if new_status not in valid_next_states and old_status != new_status:
         raise ValidationError(f"Invalid transition from {old_status} to {new_status}")
-
-    # Log the Activity
-    if user:
-        from .models import ActivityLog
-        ActivityLog.objects.create(
-            job=application.job,
-            user=user,
-            action_type='STATUS_CHANGE',
-            description=f"Status changed from {old_status} to {new_status} for candidate {application.candidate.user.email}. Notes: {notes}"
-        )    
 
     # Apply changes atomically
     with transaction.atomic():
@@ -170,6 +163,21 @@ def update_application_status(application, new_status, user, notes=''):
             logger.exception(
                 "Failed to queue %s email for application %d: %s",
                 new_status, application.id, exc,
+            )
+
+    # ─── Trigger Telephony Gatekeeper when status → ready_for_interview ───
+    if new_status == 'ready_for_interview':
+        try:
+            from .telephony_gatekeeper import trigger_gatekeeper_for_application
+            trigger_gatekeeper_for_application(application, triggered_by_user=user)
+            logger.info(
+                "Telephony gatekeeper triggered for application %d",
+                application.id,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Telephony gatekeeper failed for application %d: %s",
+                application.id, exc,
             )
 
     return application

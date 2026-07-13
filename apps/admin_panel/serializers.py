@@ -1,7 +1,21 @@
 from rest_framework import serializers
 from .models import AdminActionLog
 from apps.users.models import CustomUser, Employer
-from apps.jobs.models import Job
+from apps.jobs.models import Job, Application
+
+class AdminApplicationSerializer(serializers.ModelSerializer):
+    """Application data for admin moderation."""
+    candidate_name = serializers.CharField(source='candidate.user.username', read_only=True, default='')
+    job_title = serializers.CharField(source='job.title', read_only=True, default='')
+    employer_name = serializers.CharField(source='job.employer.company_name', read_only=True, default='')
+
+    class Meta:
+        model = Application
+        fields = [
+            'id', 'candidate', 'candidate_name', 'job', 'job_title', 'employer_name',
+            'status', 'match_score', 'applied_on'
+        ]
+        read_only_fields = fields
 
 
 class AdminActionLogSerializer(serializers.ModelSerializer):

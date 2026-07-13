@@ -306,3 +306,292 @@ def process_application_ats_task(application_id):
             send_status_change_email(application, new_status)
         except Exception as exc:
             logger.exception(f"Failed to apply auto-action for Application {application_id}: {exc}")
+
+
+# ──────────────────────────────────────────────
+# 4. AI Interview Call Tasks (Twilio + Groq)
+# ──────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=30)
+def schedule_ai_interview_task(self, session_id):
+    """
+    Initiates an outbound Twilio call for an AI interview session.
+
+    Workflow:
+        1. Load the InterviewSession
+        2. Check if scheduled_time has arrived
+        3. Call the candidate via Twilio
+        4. Store the call_sid on the session
+        5. On failure, retry with backoff
+    """
+    from apps.jobs.models import InterviewSession
+
+    try:
+        session = InterviewSession.objects.select_related(
+            'application__candidate__user',
+            'application__job__employer',
+        ).get(id=session_id)
+    except InterviewSession.DoesNotExist:
+        logger.error(f"InterviewSession {session_id} not found.")
+        return
+
+    # Skip if session was already handled
+    if session.status in ('completed', 'failed', 'not_picked_up', 'in_progress'):
+        logger.info(f"Session {session_id} already in terminal state '{session.status}'. Skipping.")
+        return
+
+    candidate = session.application.candidate
+    phone = candidate.user.phone
+
+    if not phone or not phone.strip():
+        session.status = 'failed'
+        session.error_message = 'Candidate has no phone number.'
+        session.save(update_fields=['status', 'error_message'])
+        logger.error(f"❌ No phone for session {session_id}")
+        return
+
+    # Clean up the phone number
+    phone = phone.strip().replace(' ', '')
+
+    logger.info(
+        f"📞 Initiating Twilio call for Session {session_id} "
+        f"({candidate.user.email} → {session.application.job.title})"
+    )
+
+    try:
+        from twilio.rest import Client
+        from twilio.base.exceptions import TwilioRestException
+
+        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+
+        call = client.calls.create(
+            to=phone,
+            from_=settings.TWILIO_PHONE_NUMBER.strip().replace(' ', ''),
+            url=f"{settings.NGROK_BASE_URL}/api/jobs/webhook/incoming/",
+            status_callback=f"{settings.NGROK_BASE_URL}/api/jobs/webhook/twilio-status/",
+            status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
+            status_callback_method='POST',
+            method='POST',
+            timeout=30,
+        )
+
+        # Store the call SID
+        session.twilio_call_sid = call.sid
+        session.status = 'in_progress'
+        session.save(update_fields=['twilio_call_sid', 'status', 'updated_at'])
+
+        logger.info(
+            f"✅ Twilio call initiated: SID={call.sid} for Session {session_id}"
+        )
+
+    except Exception as exc:
+        logger.exception(
+            f"❌ Twilio call failed for Session {session_id}: {exc}"
+        )
+
+        session.retry_count += 1
+        session.error_message = str(exc)
+
+        if session.retry_count < session.max_retries:
+            session.status = 'scheduled'
+            session.save(update_fields=['status', 'retry_count', 'error_message', 'updated_at'])
+            raise self.retry(exc=exc)
+        else:
+            session.status = 'failed'
+            session.save(update_fields=['status', 'retry_count', 'error_message', 'updated_at'])
+
+
+@shared_task
+def process_interview_completion_task(session_id):
+    """
+    After an AI interview call completes, analyze the transcript
+    using the AIBridgeService to generate a score and summary.
+    """
+    from apps.jobs.models import InterviewSession
+    from apps.jobs.ai_bridge import AIBridgeService
+
+    try:
+        session = InterviewSession.objects.select_related(
+            'application__candidate__user',
+            'application__job',
+        ).get(id=session_id)
+    except InterviewSession.DoesNotExist:
+        logger.error(f"InterviewSession {session_id} not found for scoring.")
+        return
+
+    if not session.transcript.strip():
+        logger.warning(f"Empty transcript for Session {session_id}. Skipping scoring.")
+        return
+
+    ai_bridge = AIBridgeService()
+
+    try:
+        result_text = ai_bridge.score_interview(
+            transcript=session.transcript,
+            job_title=session.application.job.title,
+            job_description=session.application.job.description
+        )
+
+        # Parse score and summary
+        score = 0
+        summary = result_text
+        for line in result_text.split('\n'):
+            if line.startswith('SCORE:'):
+                try:
+                    score = int(line.replace('SCORE:', '').strip())
+                except ValueError:
+                    score = 0
+            elif line.startswith('SUMMARY:'):
+                summary = line.replace('SUMMARY:', '').strip()
+
+        session.ai_score = max(0, min(100, score))
+        session.ai_summary = summary
+        session.save(update_fields=['ai_score', 'ai_summary', 'updated_at'])
+
+        # Store in application match_details
+        existing = session.application.match_details or {}
+        existing['ai_interview'] = {
+            'score': session.ai_score,
+            'summary': session.ai_summary,
+            'call_duration': session.call_duration,
+            'status': 'completed',
+        }
+        session.application.match_details = existing
+        session.application.save(update_fields=['match_details'])
+
+        logger.info(
+            f"🧠 Interview scored: Session {session_id} → {score}/100"
+        )
+
+    except Exception as exc:
+        logger.exception(f"Failed to score interview Session {session_id}: {exc}")
+
+
+# ──────────────────────────────────────────────
+# 5. Periodic / Cron Tasks (Celery Beat)
+# ──────────────────────────────────────────────
+
+@shared_task
+def send_job_digest_task():
+    """
+    Celery Beat task — runs every Monday at 9 AM.
+    Sends a digest of new jobs posted in the last 7 days to all active
+    candidates who have opted in (all active candidates for now).
+    """
+    from datetime import timedelta
+    from apps.users.models import Candidate
+
+    one_week_ago = timezone.now() - timedelta(days=7)
+    new_jobs = Job.objects.filter(
+        is_active=True,
+        created_at__gte=one_week_ago,
+    ).order_by('-created_at')[:20]
+
+    if not new_jobs.exists():
+        logger.info("📭 No new jobs this week. Skipping digest.")
+        return
+
+    # Build the digest body
+    job_lines = []
+    for job in new_jobs:
+        job_lines.append(
+            f"• {job.title} at {job.employer.company_name} "
+            f"({job.location_type}, {job.get_experience_level_display()})"
+        )
+    digest_body = (
+        "Here are the latest jobs posted this week on ZecPath:\n\n"
+        + "\n".join(job_lines)
+        + "\n\nLog in to apply: https://zecpath.com/jobs"
+    )
+
+    # Send to all active candidates
+    active_candidates = Candidate.objects.filter(
+        is_active=True,
+    ).select_related('user')
+
+    queued_count = 0
+    for candidate in active_candidates:
+        email_log = EmailLog.objects.create(
+            application=None,
+            recipient_email=candidate.user.email,
+            subject="📬 Your Weekly Job Digest from ZecPath",
+            body=digest_body,
+            email_type='job_digest',
+            status='pending',
+        )
+        send_async_email_task.delay(email_log.id)
+        queued_count += 1
+
+    logger.info(f"📧 Weekly job digest queued for {queued_count} candidates ({new_jobs.count()} new jobs).")
+
+
+@shared_task
+def check_overdue_interviews_task():
+    """
+    Celery Beat task — runs every hour.
+    Finds applications stuck in the 'interviewing' status for more than
+    7 days and logs a warning so employers can take action.
+    """
+    from datetime import timedelta
+    from .models import ApplicationLog
+
+    threshold = timezone.now() - timedelta(days=7)
+
+    # Find applications in 'interviewing' that haven't had a status
+    # change logged in the last 7 days.
+    interviewing_apps = Application.objects.filter(
+        status='interviewing',
+    ).select_related('candidate__user', 'job__employer')
+
+    overdue_count = 0
+    for app in interviewing_apps:
+        last_log = ApplicationLog.objects.filter(
+            application=app
+        ).order_by('-created_at').first()
+
+        if last_log and last_log.created_at < threshold:
+            overdue_count += 1
+            logger.warning(
+                f"⏰ Overdue interview: Application {app.id} "
+                f"({app.candidate.user.email} → {app.job.title}) "
+                f"has been in 'interviewing' since {last_log.created_at:%Y-%m-%d}. "
+                f"Employer: {app.job.employer.company_name}"
+            )
+
+    if overdue_count:
+        logger.info(f"⏰ Found {overdue_count} overdue interviews.")
+    else:
+        logger.info("✅ No overdue interviews found.")
+
+
+@shared_task
+def cleanup_old_audio_files_task():
+    """
+    Celery Beat task — runs daily.
+    Deletes generated AI interview audio files (.mp3/.wav) in media/interview_audio/
+    that are older than 24 hours to prevent storage bloat.
+    """
+    import os
+    import time
+
+    audio_dir = os.path.join(settings.MEDIA_ROOT, 'interview_audio')
+    if not os.path.exists(audio_dir):
+        return
+
+    now = time.time()
+    cutoff = now - (24 * 60 * 60)  # 24 hours ago
+    deleted_count = 0
+
+    for filename in os.listdir(audio_dir):
+        filepath = os.path.join(audio_dir, filename)
+        if os.path.isfile(filepath):
+            if os.stat(filepath).st_mtime < cutoff:
+                try:
+                    os.remove(filepath)
+                    deleted_count += 1
+                except Exception as exc:
+                    logger.warning(f"Could not delete old audio file {filepath}: {exc}")
+
+    if deleted_count > 0:
+        logger.info(f"🗑️ Cleaned up {deleted_count} old interview audio files.")
+

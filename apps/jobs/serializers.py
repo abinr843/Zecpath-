@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.jobs.models import Job, Application, ApplicationLog, SavedJob, Offer
+from apps.jobs.models import Job, Application, ApplicationLog, SavedJob, Offer, InterviewSession, Notification, AIQuestion, AIAnswer
 from apps.users.models import Candidate, CustomUser, Employer
 
 
@@ -129,4 +129,84 @@ class OfferSerializer(serializers.ModelSerializer):
     class Meta:
         model = Offer
         fields = ('id', 'employer', 'candidate', 'job', 'message', 'status', 'created_at', 'updated_at', 'employer_details', 'candidate_details', 'job_details')
-        read_only_fields = ('id', 'employer', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'employer', 'created_at', 'updated_at')
+
+
+class InterviewSessionSerializer(serializers.ModelSerializer):
+    candidate_name = serializers.SerializerMethodField()
+    job_title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InterviewSession
+        fields = ('id', 'application', 'status', 'scheduled_time',
+                  'twilio_call_sid', 'transcript', 'ai_score', 'ai_summary',
+                  'retry_count', 'max_retries', 'error_message',
+                  'call_duration', 'created_at', 'updated_at',
+                  'candidate_name', 'job_title')
+        read_only_fields = ('id', 'application', 'twilio_call_sid', 'transcript',
+                           'ai_score', 'ai_summary', 'retry_count',
+                           'created_at', 'updated_at')
+
+    def get_candidate_name(self, obj):
+        user = obj.application.candidate.user
+        return user.get_full_name() or user.username
+
+    def get_job_title(self, obj):
+        return obj.application.job.title
+
+
+class AIAnswerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AIAnswer
+        fields = ('id', 'text', 'latency_seconds', 'created_at')
+
+
+class AIQuestionSerializer(serializers.ModelSerializer):
+    answer = AIAnswerSerializer(read_only=True)
+
+    class Meta:
+        model = AIQuestion
+        fields = ('id', 'sequence_number', 'text', 'created_at', 'answer')
+
+
+class InterviewSessionDetailSerializer(serializers.ModelSerializer):
+    candidate_name = serializers.SerializerMethodField()
+    job_title = serializers.SerializerMethodField()
+    questions = AIQuestionSerializer(source='ai_questions', many=True, read_only=True)
+    total_questions = serializers.SerializerMethodField()
+    avg_latency = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InterviewSession
+        fields = ('id', 'application', 'status', 'scheduled_time',
+                  'twilio_call_sid', 'transcript', 'transcript_data',
+                  'ai_score', 'ai_summary', 'retry_count', 'max_retries',
+                  'error_message', 'call_duration', 'created_at', 'updated_at',
+                  'candidate_name', 'job_title', 'questions',
+                  'total_questions', 'avg_latency')
+
+    def get_candidate_name(self, obj):
+        user = obj.application.candidate.user
+        return user.get_full_name() or user.username
+
+    def get_job_title(self, obj):
+        return obj.application.job.title
+
+    def get_total_questions(self, obj):
+        return obj.ai_questions.count()
+
+    def get_avg_latency(self, obj):
+        answers = AIAnswer.objects.filter(question__session=obj, latency_seconds__isnull=False)
+        if not answers.exists():
+            return None
+        from django.db.models import Avg
+        return round(answers.aggregate(avg=Avg('latency_seconds'))['avg'] or 0, 2)
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ('id', 'notification_type', 'title', 'message', 'is_read',
+                 'related_application', 'created_at')
+        read_only_fields = ('id', 'notification_type', 'title', 'message',
+                           'related_application', 'created_at')

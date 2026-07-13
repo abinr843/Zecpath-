@@ -96,6 +96,20 @@ class Candidate(models.Model):
     location = models.CharField(max_length=255, blank=True, help_text="e.g., Adoor, Kerala")
     willing_to_relocate = models.BooleanField(default=False)
 
+    # Interview Scheduling
+    timezone = models.CharField(
+        max_length=50, default='Asia/Kolkata',
+        help_text='IANA timezone (e.g. Asia/Kolkata, America/New_York)'
+    )
+    preferred_interview_time_start = models.TimeField(
+        null=True, blank=True,
+        help_text='Start of preferred time range (HH:MM).'
+    )
+    preferred_interview_time_end = models.TimeField(
+        null=True, blank=True,
+        help_text='End of preferred time range (HH:MM).'
+    )
+
     # Digital Portfolio
     master_resume = models.FileField(
         upload_to='master_resumes/',

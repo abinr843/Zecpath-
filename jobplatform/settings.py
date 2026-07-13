@@ -30,10 +30,14 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-
-
-ALLOWED_HOSTS = []
+if not DEBUG:
+    ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['yourdomain.com', 'www.yourdomain.com'])
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+else:
+    ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
 
 
 MEDIA_URL = '/media/'
@@ -102,6 +106,14 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'jobplatform.custom_exceptions.custom_exception_handler',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/minute',
+        'user': '120/minute'
+    }
 }
 
 
@@ -214,11 +226,51 @@ CACHES = {
 
 
 # ─── CELERY CONFIGURATION ──────────────────
-import os
-db_path = BASE_DIR / 'celery_broker.sqlite3'
-CELERY_BROKER_URL = f"sqla+sqlite:///{db_path}"
-CELERY_RESULT_BACKEND = f"db+sqlite:///{db_path}"
+from celery.schedules import crontab
+
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+
+# ─── CELERY BEAT SCHEDULE (Periodic / Cron Tasks) ──────────────────
+CELERY_BEAT_SCHEDULE = {
+    # 1. Clean up expired / blacklisted JWT tokens every night at midnight
+    'cleanup-expired-tokens-nightly': {
+        'task': 'apps.users.tasks.cleanup_expired_tokens_task',
+        'schedule': crontab(minute=0, hour=0),  # Every day at 00:00
+    },
+    # 2. Send a weekly "Job Digest" email to candidates every Monday at 9 AM
+    'send-job-digest-weekly': {
+        'task': 'apps.jobs.tasks.send_job_digest_task',
+        'schedule': crontab(minute=0, hour=9, day_of_week='monday'),
+    },
+    # 3. Check for overdue interviews every hour
+    'check-overdue-interviews-hourly': {
+        'task': 'apps.jobs.tasks.check_overdue_interviews_task',
+        'schedule': crontab(minute=0),  # Every hour at :00
+    },
+    # 4. Clean up AI interview audio files older than 24h
+    'cleanup-old-audio-files-daily': {
+        'task': 'apps.jobs.tasks.cleanup_old_audio_files_task',
+        'schedule': crontab(minute=0, hour=3),  # 3 AM daily
+    },
+}
+
+
+# ─── TWILIO CONFIGURATION ──────────────────
+TWILIO_ACCOUNT_SID = env('TWILIO_ACCOUNT_SID', default='')
+TWILIO_AUTH_TOKEN = env('TWILIO_AUTH_TOKEN', default='')
+TWILIO_PHONE_NUMBER = env('TWILIO_PHONE_NUMBER', default='')
+TWILIO_WEBHOOK_SECRET = env('TWILIO_WEBHOOK_SECRET', default='')
+NGROK_BASE_URL = env('NGROK_BASE_URL', default='')
+
+# ─── GROQ AI CONFIGURATION ──────────────────
+GROQ_API_KEY = env('GROQ_API_KEY', default='')
+GROQ_STT_MODEL = 'whisper-large-v3'         # Speech-to-Text
+GROQ_LLM_MODEL = 'llama-3.3-70b-versatile'  # Conversational brain
+
+# ─── EDGE TTS CONFIGURATION ──────────────────
+EDGE_TTS_VOICE = 'en-US-AriaNeural'
